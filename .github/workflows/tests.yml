@@ -1,0 +1,22 @@
+name: Tests 2N Color
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer dépendances
+        run: pip install -r requirements-dev.txt
+      - name: Compiler le Python
+        run: python -m compileall -q app mac_agent.py tests
+      - name: Exécuter les tests
+        run: pytest -q
+      - name: Valider Docker Compose
+        run: |
+          MEDIA_ROOT=/tmp PORT=8765 AGENT_TOKEN=test123 docker compose config --quiet
