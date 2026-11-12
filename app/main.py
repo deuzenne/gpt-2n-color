@@ -141,7 +141,7 @@ def health():
     with lock:
         age = time.time() - last_agent_seen
         return {"ok": True, "version": VERSION, "root": str(ROOT),
-                "agent_online": age < 8, "agent_age": round(age, 1)
+                "agent_online": age < 45, "agent_age": round(age, 1)
                 if last_agent_seen else None}
 
 
@@ -384,7 +384,7 @@ def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, 
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
                "-ss", str(start), "-i", str(target),
                "-map", "0:v:0", "-map", "0:a:0?",
-               "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
+               "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k",
                "-movflags", "frag_keyframe+empty_moov+default_base_moof",
