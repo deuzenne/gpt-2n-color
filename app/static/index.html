@@ -47,6 +47,8 @@
     .secondaryactions{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}
     .secondaryactions .button{font-size:13px;flex:1}.message{margin-top:15px;font-size:12px;color:var(--muted);line-height:1.5}
     .notice{margin-top:8px;background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+    .progressHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .progressPercent{color:var(--cyan);font-size:12px;font-weight:750;font-variant-numeric:tabular-nums}
     .progress{height:6px;background:#222c3e;border-radius:8px;overflow:hidden;margin:14px 0 6px}.progress>div{height:100%;background:linear-gradient(90deg,#5e92ed,#7cdae2);transition:width .2s}
     .toast{position:fixed;bottom:24px;right:24px;background:#25344a;color:#fff;border:1px solid #527294;border-radius:12px;padding:12px 17px;max-width:min(500px,90vw);box-shadow:0 16px 50px #0008;z-index:100;display:none}
     .foot{text-align:center;font-size:11px;color:#6f7d96;margin-top:22px}
@@ -56,10 +58,12 @@
     .folderSummary strong{color:var(--cyan);font-weight:700}
     .folderSummary .sample{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
     @media(min-width:761px) and (max-height:950px){
-      .app{height:100vh;height:100dvh;overflow:hidden;padding:8px 13px}
-      .topbar{padding:2px 0 9px}.brandmark{height:37px;width:37px;border-radius:10px}.brand h1{font-size:18px}
-      .layout{height:calc(100vh - 65px);height:calc(100dvh - 65px);min-height:0;overflow:hidden;grid-template-columns:250px minmax(0,1fr);gap:11px;padding-top:9px}
-      .sidebar{position:static;overflow-y:auto;min-height:0;padding:12px}
+      .app{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;overflow:hidden;padding:8px 13px}
+      .topbar{flex:none;padding:2px 0 9px}.brandmark{height:37px;width:37px;border-radius:10px}.brand h1{font-size:18px}
+      .layout{flex:1;min-height:0;overflow:hidden;grid-template-columns:250px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:11px;padding-top:9px}
+      .sidebar{position:static;align-self:stretch;display:flex;flex-direction:column;min-height:0;padding:12px}
+      .sidebarBrowse{min-height:0;overflow-y:auto}
+      .sidebarProgress{flex:none}
       .sidebar h2{margin:4px 0 8px;font-size:14px}
       .folderhead{margin:9px 0 4px}.folders{max-height:18vh;min-height:22px}
       .divider{margin:11px 0}.checkline{margin:8px 0}.sidebar .button{padding:9px}
@@ -91,31 +95,38 @@
     </header>
     <div class="layout">
       <aside class="panel sidebar">
-        <span class="overline">Bibliothèque</span>
-        <h2>Choisir un dossier</h2>
-        <div class="path" id="rootPath">Chargement…</div>
-        <label class="tiny muted" for="dirInput" style="display:block;margin:12px 0 5px">Chemin exact du répertoire</label>
-        <div class="pathentry">
-          <input id="dirInput" type="text" spellcheck="false" autocomplete="off" placeholder="/Volumes/HDD01-02-3000/Vidéos">
-          <button class="smallbtn" id="openDirBtn" title="Ouvrir ce répertoire">Ouvrir</button>
+        <div class="sidebarBrowse">
+          <span class="overline">Bibliothèque</span>
+          <h2>Choisir un dossier</h2>
+          <div class="path" id="rootPath">Chargement…</div>
+          <label class="tiny muted" for="dirInput" style="display:block;margin:12px 0 5px">Chemin exact du répertoire</label>
+          <div class="pathentry">
+            <input id="dirInput" type="text" spellcheck="false" autocomplete="off" placeholder="/Volumes/HDD01-02-3000/Vidéos">
+            <button class="smallbtn" id="openDirBtn" title="Ouvrir ce répertoire">Ouvrir</button>
+          </div>
+          <div class="folderhead"><div class="breadcrumbs" id="breadcrumbs"></div><button id="rootBtn" class="smallbtn" title="Retour à la racine">⌂</button></div>
+          <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
+          <div id="folderSummary" class="folderSummary">Aucun dossier sélectionné.</div>
+          <div class="divider"></div>
+          <label class="checkline"><input type="checkbox" id="recursive" checked> Inclure les sous-dossiers</label>
+          <button class="button primary wide" id="scanBtn">◉ Analyser les vidéos sans couleur</button>
+          <p class="tiny muted" style="line-height:1.5">Du fichier le plus lourd au plus léger. Les archives 2N et les fichiers déjà colorés ne passent pas dans la file.</p>
         </div>
-        <div class="folderhead"><div class="breadcrumbs" id="breadcrumbs"></div><button id="rootBtn" class="smallbtn" title="Retour à la racine">⌂</button></div>
-        <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
-        <div id="folderSummary" class="folderSummary">Aucun dossier sélectionné.</div>
-        <div class="divider"></div>
-        <label class="checkline"><input type="checkbox" id="recursive" checked> Inclure les sous-dossiers</label>
-        <button class="button primary wide" id="scanBtn">◉ Analyser les vidéos sans couleur</button>
-        <p class="tiny muted" style="line-height:1.5">Du fichier le plus lourd au plus léger. Les archives 2N et les fichiers déjà colorés ne passent pas dans la file.</p>
-        <div class="divider"></div>
-        <span class="overline">Progression</span>
-        <div class="progress"><div id="progressBar" style="width:0%"></div></div>
-        <div class="stats">
-          <div class="stat"><strong id="statRemaining">—</strong><span>À classer</span></div>
-          <div class="stat"><strong id="statDone">—</strong><span>Traitées</span></div>
-          <div class="stat"><strong id="statVolume">—</strong><span>Volume restant</span></div>
-          <div class="stat"><strong id="statTotal">—</strong><span>Vidéos analysées</span></div>
+        <div class="sidebarProgress">
+          <div class="divider"></div>
+          <div class="progressHeading">
+            <span class="overline" id="progressLabel">Progression</span>
+            <span class="progressPercent" id="progressPercent" aria-hidden="true">0 %</span>
+          </div>
+          <div class="progress" role="progressbar" aria-labelledby="progressLabel" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar" style="width:0%"></div></div>
+          <div class="stats">
+            <div class="stat"><strong id="statRemaining">—</strong><span>À classer</span></div>
+            <div class="stat"><strong id="statDone">—</strong><span>Traitées</span></div>
+            <div class="stat"><strong id="statVolume">—</strong><span>Volume restant</span></div>
+            <div class="stat"><strong id="statTotal">—</strong><span>Vidéos analysées</span></div>
+          </div>
+          <p id="scanStatus" class="tiny muted" style="margin-bottom:0;line-height:1.55">Sélectionne ton répertoire pour commencer.</p>
         </div>
-        <p id="scanStatus" class="tiny muted" style="margin-bottom:0;line-height:1.55">Sélectionne ton répertoire pour commencer.</p>
       </aside>
       <main class="main">
         <section class="panel playerpanel">
@@ -283,12 +294,20 @@
     $("noneBtn").disabled=$("skipBtn").disabled=!canAct();
     $("undoBtn").disabled=!(state&&state.can_undo);
   }
+  function setProgress(ratio){
+    const percent = Math.min(100, Math.floor(ratio * 100));
+    const bar = $("progressBar");
+    bar.style.width = percent + "%";
+    bar.parentElement.setAttribute("aria-valuenow", percent);
+    $("progressPercent").textContent = percent + " %";
+  }
   async function scan(){
     try{
       $("scanBtn").disabled=true;
       const selected=$("dirInput").value.trim();
       if(!(await browse(selected)))return;
       sessionId=null;state=null;activePath=null;stopVideo();
+      setProgress(0);
       updateScanButton();
       const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:$("recursive").checked})});
       sessionId=s.id;await poll();
@@ -305,7 +324,7 @@
       $("statVolume").textContent=fmtSize(s.remaining_bytes);
       $("statTotal").textContent=s.total_files;
       const progress=s.status==="scanning"?(s.total_files?s.scan_done/s.total_files:1):((s.queue_size+s.reviewed)?s.reviewed/(s.queue_size+s.reviewed):1);
-      $("progressBar").style.width=Math.min(100,Math.floor(progress*100))+"%";
+      setProgress(progress);
       $("scanStatus").textContent=s.status==="scanning"?`Lecture Finder : ${s.scan_done} / ${s.total_files}… Vérifier « Finder connecté » en haut.`:
        s.status==="error"?"Analyse incomplète — voir erreur ci-dessous.":
        s.total_files===0?"Aucune vidéo dans le répertoire sélectionné : vérifier le montage Colima.":
