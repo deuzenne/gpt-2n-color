@@ -97,4 +97,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.7+build.0008`.
+Version : `0.1.8+build.0009`.
