@@ -91,7 +91,10 @@
   <div class="app">
     <header class="topbar">
       <div class="brand"><div class="brandmark">2N</div><div><h1>Color <span style="color:var(--cyan)">Studio</span></h1><small>Classement vidéo · macOS + Colima</small></div></div>
-      <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span></div>
+      <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
+        <button type="button" class="smallbtn" id="enterFullscreen" disabled>Plein écran</button>
+        <button type="button" class="smallbtn" id="exitFullscreen" disabled>Quitter le plein écran</button>
+      </div>
     </header>
     <div class="layout">
       <aside class="panel sidebar">
@@ -171,6 +174,31 @@
   const fmtSize = (n) => { if(!Number.isFinite(n))return "—"; const u=["o","Kio","Mio","Gio","Tio"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return `${n.toLocaleString("fr-FR",{maximumFractionDigits:i?1:0})} ${u[i]}`; };
   const fmtTime = (sec) => { sec=Math.max(0,Math.floor(sec||0));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; };
   function notice(text, timeout=4000){const el=$("toast");el.textContent=text;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",timeout)}
+  function setupFullscreen(){
+    const enter = $("enterFullscreen");
+    const exit = $("exitFullscreen");
+    const root = document.documentElement;
+    const sync = () => {
+      enter.disabled = !document.fullscreenEnabled || !!document.fullscreenElement;
+      exit.disabled = document.fullscreenElement !== root;
+    };
+    enter.onclick = async () => {
+      try {
+        await root.requestFullscreen();
+      } catch {
+        notice("Impossible de passer en plein écran.");
+      }
+    };
+    exit.onclick = async () => {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        notice("Impossible de quitter le plein écran.");
+      }
+    };
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+  }
   async function api(path, options={}) {
     const res=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
     if(!res.ok){let msg=`Erreur HTTP ${res.status}`;try{const j=await res.json();msg=j.detail||msg}catch{}throw new Error(msg)}
@@ -366,6 +394,7 @@
     else if(e.key==="ArrowRight"&&activePath){e.preventDefault();seekTo(position()+10)}
     else if(e.key==="ArrowLeft"&&activePath){e.preventDefault();seekTo(position()-10)}
   });
+  setupFullscreen();
   createPalette();browse();health();
   setInterval(health,4000);setInterval(poll,700);
 })();
