@@ -20,7 +20,7 @@ Pour arrêter : `./stop.sh`. Logs : `docker compose logs -f` et `tail -f data/ma
 
 ## Choisir un répertoire précis depuis Safari ou Firefox
 
-Dans la colonne **Bibliothèque**, le champ **Chemin exact du répertoire**
+Dans la colonne **Bibliothèque**, ouvre **Aller à…**. Le champ **Chemin exact du répertoire**
 accepte un chemin macOS complet, par exemple :
 
 ```text
@@ -97,4 +97,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.8+build.0009`.
+Version : `0.1.9+build.0010`.

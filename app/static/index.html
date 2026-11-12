@@ -19,10 +19,25 @@
     .layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:22px;padding-top:23px}
     .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
     .sidebar{padding:20px;align-self:start;position:sticky;top:15px}.overline{font-size:10px;letter-spacing:1.7px;color:var(--cyan);text-transform:uppercase;font-weight:800}
-    .sidebar h2{font-size:16px;margin:8px 0 14px}.path{border:1px solid var(--line);border-radius:10px;padding:10px 11px;overflow-wrap:anywhere;font-size:12px;color:var(--muted);line-height:1.5;min-height:42px}
-    .folderhead{display:flex;align-items:center;justify-content:space-between;gap:5px;margin:16px 0 10px}
+    [hidden]{display:none!important}
+    .layout.library-hidden{grid-template-columns:minmax(0,1fr)}
+    .sidebarBrowse{display:flex;flex-direction:column;gap:8px}
+    .directoryBar,.directoryTools{display:flex;align-items:center;gap:5px;min-width:0}
+    .directoryBar .smallbtn,.directoryTools .smallbtn{flex:none;padding:5px 7px}
+    .directoryBar .breadcrumbs{flex:1;min-width:0;flex-wrap:nowrap;overflow:auto;scrollbar-width:thin}
+    .directoryBar .breadcrumbs button{flex:none;white-space:nowrap}
+    .directoryTools details{min-width:0}
+    .sidebar summary{cursor:pointer;color:var(--cyan);font-size:12px}
+    .sidebar summary:focus-visible,.sidebar input:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+    #goToFolder[open]{flex:1}
+    #goToFolder .pathentry{margin-top:6px}
+    .folderFilter{width:100%;min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--text)}
+    .quickFolderList{max-height:76px;overflow:auto}
+    .quickFolderList .folder{padding:5px 7px}
+    .folderName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .scanControls{flex:none}
     .folders{max-height:min(39vh,380px);overflow:auto;display:flex;flex-direction:column;gap:4px}.folder{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;color:var(--text);padding:11px 9px;border-radius:9px;text-align:left;font-size:13px}
-    .folder:hover{background:var(--surface2)}.folder .chevron{margin-left:auto;color:var(--muted)}.folder .foldericon{color:#f7c979}
+    .folder:hover{background:var(--surface2)}.folder .chevron{margin-left:auto;color:var(--muted)}
     .folder.excluded{opacity:.52}.folder small{color:var(--muted)}.breadcrumbs{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
     .breadcrumbs button{padding:4px 7px;border:0;background:none;color:var(--cyan);font-size:12px}.breadcrumbs button:hover{text-decoration:underline}
     .divider{height:1px;background:var(--line);margin:20px 0}.checkline{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:14px 0}.checkline input{accent-color:var(--accent);width:17px;height:17px}
@@ -65,10 +80,12 @@
       .topbar{flex:none;padding:2px 0 9px}.brandmark{height:37px;width:37px;border-radius:10px}.brand h1{font-size:18px}
       .layout{flex:1;min-height:0;overflow:hidden;grid-template-columns:250px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:11px;padding-top:9px}
       .sidebar{position:static;align-self:stretch;display:flex;flex-direction:column;min-height:0;padding:12px}
-      .sidebarBrowse{min-height:0;overflow-y:auto}
+      .sidebarBrowse{flex:1;min-height:0;overflow:auto}
+      .sidebarBrowse .folders{flex:1 0 65px;max-height:none}
+      .sidebarBrowse>*:not(.folders){flex-shrink:0}
+      .sidebarBrowse .folderSummary{margin-top:0}
+      .sidebarProgress #scanStatus{max-height:3.1em;overflow:auto}
       .sidebarProgress{flex:none}
-      .sidebar h2{margin:4px 0 8px;font-size:14px}
-      .folderhead{margin:9px 0 4px}.folders{max-height:18vh;min-height:22px}
       .divider{margin:11px 0}.checkline{margin:8px 0}.sidebar .button{padding:9px}
       .stats{gap:6px}.stat{padding:8px}.stat strong{font-size:19px}.stat span{font-size:10px}
       .main{min-height:0;max-height:100%;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr)}
@@ -96,28 +113,43 @@
       </div>
       <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
         <time class="status localTime" id="localTime" title="Heure locale">—</time>
+        <button type="button" class="smallbtn" id="toggleLibrary" aria-controls="libraryPanel" aria-expanded="true" aria-label="Masquer la bibliothèque">Bibliothèque</button>
         <button type="button" class="smallbtn" id="enterFullscreen" disabled>Plein écran</button>
         <button type="button" class="smallbtn" id="exitFullscreen" disabled>Quitter le plein écran</button>
       </div>
     </header>
     <div class="layout">
-      <aside class="panel sidebar">
+      <aside class="panel sidebar" id="libraryPanel" aria-label="Bibliothèque">
         <div class="sidebarBrowse">
-          <span class="overline">Bibliothèque</span>
-          <h2>Choisir un dossier</h2>
-          <div class="path" id="rootPath">Chargement…</div>
-          <label class="tiny muted" for="dirInput" style="display:block;margin:12px 0 5px">Chemin exact du répertoire</label>
-          <div class="pathentry">
-            <input id="dirInput" type="text" spellcheck="false" autocomplete="off" placeholder="/Volumes/HDD01-02-3000/Vidéos">
-            <button class="smallbtn" id="openDirBtn" title="Ouvrir ce répertoire">Ouvrir</button>
+          <div class="directoryBar">
+            <button type="button" id="parentBtn" class="smallbtn" aria-label="Parent" disabled>↑ Parent</button>
+            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Chemin courant"></nav>
+            <button type="button" id="rootBtn" class="smallbtn" aria-label="Retour à la racine" title="Retour à la racine">⌂</button>
           </div>
-          <div class="folderhead"><div class="breadcrumbs" id="breadcrumbs"></div><button id="rootBtn" class="smallbtn" title="Retour à la racine">⌂</button></div>
+          <div class="directoryTools">
+            <button type="button" id="favoriteBtn" class="smallbtn" aria-label="Ajouter aux favoris" aria-pressed="false" disabled>☆</button>
+            <details id="goToFolder">
+              <summary>Aller à…</summary>
+              <div class="pathentry">
+                <input id="dirInput" type="text" aria-label="Chemin exact du répertoire" spellcheck="false" autocomplete="off" placeholder="/Volumes/HDD01-02-3000/Vidéos">
+                <button type="button" class="smallbtn" id="openDirBtn">Ouvrir</button>
+              </div>
+            </details>
+          </div>
+          <details id="quickFolders">
+            <summary>Favoris et récents</summary>
+            <div class="tiny muted">Favoris</div>
+            <div id="favoriteFolders" class="quickFolderList"></div>
+            <div class="tiny muted">Récents</div>
+            <div id="recentFolders" class="quickFolderList"></div>
+          </details>
+          <input type="search" id="folderFilter" class="folderFilter" aria-label="Filtrer les sous-dossiers" placeholder="Filtrer les sous-dossiers">
           <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
           <div id="folderSummary" class="folderSummary">Aucun dossier sélectionné.</div>
-          <div class="divider"></div>
+        </div>
+        <div class="scanControls">
           <label class="checkline"><input type="checkbox" id="recursive" checked> Inclure les sous-dossiers</label>
           <button class="button primary wide" id="scanBtn">◉ Analyser les vidéos sans couleur</button>
-          <p class="tiny muted" style="line-height:1.5">Du fichier le plus lourd au plus léger. Les archives 2N et les fichiers déjà colorés ne passent pas dans la file.</p>
         </div>
         <div class="sidebarProgress">
           <div class="divider"></div>
@@ -173,7 +205,7 @@
   const $ = (id) => document.getElementById(id);
   const palette = [["Rouge","#e45d65"],["Violet","#af81ee"],["Vert","#4bc99d"],["Bleu","#689df7"],["Gris","#919cab"],["Jaune","#e7c965"],["Orange","#efa66c"]];
   let directory = "", sessionId = null, state = null, activePath = null;
-  let rootDisplay = "", browsing = false;
+  let browsing = false;
   let folderVideoCount = null, folderHasSubdirs = false;
   let mode = "direct", duration = 0, offset = 0, speed = 1, fallbackAttempted = false, pollBusy = false;
   let lastErrorText = "", toastTimer = null;
@@ -214,28 +246,102 @@
   }
   const qs=(x)=>encodeURIComponent(x);
   async function health(){
-    try {const h=await api("/api/health");rootDisplay=h.root;$("rootPath").textContent=h.root;$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
+    try {const h=await api("/api/health");$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
     catch{$("agentText").textContent="Serveur indisponible";$("agentDot").classList.remove("online")}
   }
   const lastDirectoryKey = "2n-color.last-directory";
+  const folderStorageKeys = {
+    favorites: "2n-color.favorite-folders",
+    recent: "2n-color.recent-folders",
+  };
+  function readFolders(key){
+    try {
+      const paths = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(paths) ? paths.filter(path => typeof path === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+  function saveFolders(key, paths){
+    try { localStorage.setItem(key, JSON.stringify(paths)); } catch {}
+  }
+  let favorites = readFolders(folderStorageKeys.favorites);
+  let recent = readFolders(folderStorageKeys.recent);
+  let currentFolderPath = "", subfolders = [];
+  function folderButton(name, path, {excluded=false, quick=false}={}){
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "folder" + (excluded ? " excluded" : "");
+    row.title = quick ? path : name;
+    const label = document.createElement("span");
+    label.className = "folderName";
+    label.textContent = name + (excluded ? " (archivé)" : "");
+    row.append(label);
+    if(!quick){
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      chevron.textContent = "›";
+      row.append(chevron);
+    }
+    row.onclick = () => browse(path);
+    return row;
+  }
+  function renderSubfolders(){
+    const term = $("folderFilter").value.trim().toLocaleLowerCase("fr");
+    const shown = subfolders.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term));
+    const list = $("folders");
+    list.replaceChildren(...shown.map(folder => folderButton(folder.name, folder.path, folder)));
+    if(!shown.length) list.textContent = term ? "Aucun résultat." : "Aucun sous-dossier.";
+  }
+  function renderQuickFolders(){
+    const starred = favorites.includes(currentFolderPath);
+    const favorite = $("favoriteBtn");
+    const label = starred ? "Retirer des favoris" : "Ajouter aux favoris";
+    favorite.disabled = !currentFolderPath;
+    favorite.textContent = starred ? "★" : "☆";
+    favorite.setAttribute("aria-pressed", String(starred));
+    favorite.setAttribute("aria-label", label);
+    favorite.title = label;
+    for(const [id, paths] of [["favoriteFolders", favorites], ["recentFolders", recent]]){
+      const list = $(id);
+      list.replaceChildren(...paths.map(path => folderButton(path.split("/").filter(Boolean).at(-1) || "Racine", path, {quick:true})));
+      if(!paths.length){
+        const empty = document.createElement("div");
+        empty.className = "tiny muted";
+        empty.textContent = id === "favoriteFolders" ? "Aucun favori" : "Aucun dossier récent";
+        list.append(empty);
+      }
+    }
+  }
   async function browse(path=""){
     if(browsing)return false;
     browsing=true;
     try {
       const d=await api("/api/tree?directory="+qs(path));
       directory=d.path==="."?"":d.path;
-      $("dirInput").value=d.display_path;
-      $("breadcrumbs").innerHTML="";
+      currentFolderPath=d.display_path;
+      $("dirInput").value=currentFolderPath;
+      $("breadcrumbs").replaceChildren();
       let segments=[{name:d.root_name||"Racine",path:""}],p="";
       if(directory){for(const seg of directory.split("/")){p=p?p+"/"+seg:seg;segments.push({name:seg,path:p})}}
-      segments.forEach((part,i)=>{const b=document.createElement("button");b.textContent=(i?"› ":"")+part.name;b.onclick=()=>browse(part.path);$("breadcrumbs").appendChild(b)});
-      const list=$("folders");list.innerHTML="";list.className="folders";
-      if(!d.directories.length){list.textContent="Aucun sous-dossier.";}
-      for(const folder of d.directories){
-        const row=document.createElement("button");row.className="folder"+(folder.excluded?" excluded":"");
-        row.innerHTML=`<span class="foldericon">▰</span><span>${esc(folder.name)}${folder.excluded?" <small>(archivé)</small>":""}</span><span class="chevron">›</span>`;
-        row.onclick=()=>browse(folder.path);list.appendChild(row);
-      }
+      segments.forEach((part,i)=>{
+        const b=document.createElement("button");
+        b.type="button";
+        b.textContent=(i?"› ":"")+part.name;
+        b.onclick=()=>browse(part.path);
+        if(i===segments.length-1)b.setAttribute("aria-current","location");
+        $("breadcrumbs").appendChild(b);
+      });
+      $("breadcrumbs").scrollLeft=$("breadcrumbs").scrollWidth;
+      $("parentBtn").disabled=!directory;
+      $("rootBtn").disabled=!directory;
+      $("folderFilter").value="";
+      subfolders=d.directories;
+      renderSubfolders();
+      recent=[currentFolderPath,...recent.filter(item=>item!==currentFolderPath)].slice(0,5);
+      saveFolders(folderStorageKeys.recent,recent);
+      renderQuickFolders();
       const summary=$("folderSummary");
       summary.innerHTML="";
       const caption=document.createElement("div");
@@ -311,7 +417,7 @@
   async function scan(){
     try{
       $("scanBtn").disabled=true;
-      const selected=$("dirInput").value.trim();
+      const selected=$("goToFolder").open ? $("dirInput").value.trim() : currentFolderPath;
       if(!(await browse(selected)))return;
       sessionId=null;state=null;activePath=null;stopVideo();
       setProgress(0);
@@ -414,8 +520,32 @@
   $("speedBtn").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;video.playbackRate=speed;$("speedBtn").textContent="×"+speed};
   $("recursive").addEventListener("change",updateScanButton);
   $("scanBtn").onclick=scan;$("rootBtn").onclick=()=>browse("");
-  $("openDirBtn").onclick=()=>browse($("dirInput").value.trim());
-  $("dirInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();browse($("dirInput").value.trim())}});
+  $("parentBtn").onclick=()=>browse(directory.split("/").slice(0,-1).join("/"));
+  $("folderFilter").addEventListener("input",renderSubfolders);
+  $("favoriteBtn").onclick=()=>{
+    favorites=favorites.includes(currentFolderPath)
+      ? favorites.filter(path=>path!==currentFolderPath)
+      : [...favorites,currentFolderPath];
+    saveFolders(folderStorageKeys.favorites,favorites);
+    renderQuickFolders();
+  };
+  $("toggleLibrary").onclick=()=>{
+    const panel=$("libraryPanel");
+    panel.hidden=!panel.hidden;
+    panel.parentElement.classList.toggle("library-hidden",panel.hidden);
+    $("toggleLibrary").setAttribute("aria-expanded",String(!panel.hidden));
+    $("toggleLibrary").setAttribute("aria-label",panel.hidden?"Afficher la bibliothèque":"Masquer la bibliothèque");
+  };
+  async function openTypedDirectory(){
+    if(await browse($("dirInput").value.trim())){
+      $("goToFolder").open=false;
+      $("goToFolder").querySelector("summary").focus();
+    }
+  }
+  $("openDirBtn").onclick=openTypedDirectory;
+  $("dirInput").addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();openTypedDirectory()}
+  });
   $("skipBtn").onclick=skip;$("undoBtn").onclick=undo;$("noneBtn").onclick=()=>choose("aucune");
   document.addEventListener("keydown",e=>{
     if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||["INPUT","TEXTAREA"].includes(document.activeElement?.tagName))return;
