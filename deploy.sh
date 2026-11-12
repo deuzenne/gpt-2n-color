@@ -52,6 +52,28 @@ fi
 docker context use colima >/dev/null 2>&1 || true
 echo "Montage : $MEDIA_ROOT → /library (lecture seule)"
 docker compose up -d --build
+# Détecter un bind mount vide dans Colima alors que le Mac voit des fichiers.
+# Docker peut monter un dossier vide si le volume externe n'est pas partagé.
+mac_has_files="$(python3 - "$MEDIA_ROOT" <<'PY'
+from pathlib import Path
+import sys
+try:
+    print("1" if next(Path(sys.argv[1]).iterdir(), None) is not None else "0")
+except OSError:
+    print("ERR")
+PY
+)"
+docker_has_files="$(docker compose exec -T app python -c 'from pathlib import Path; print("1" if next(Path("/library").iterdir(), None) is not None else "0")' 2>/dev/null || echo ERR)"
+if [[ "$mac_has_files" == "1" && "$docker_has_files" == "0" ]]; then
+  echo "" >&2
+  echo "ERREUR : le Mac voit des fichiers dans $MEDIA_ROOT, mais Colima monte un dossier vide." >&2
+  echo "Ajouter /Volumes/HDD01-02-3000 (ou le volume concerné) dans mounts avec writable: false." >&2
+  echo "Puis relancer Colima et ./deploy.sh. Aucun fichier média n'a été modifié." >&2
+  exit 1
+fi
+if [[ "$docker_has_files" == "ERR" ]]; then
+  echo "ATTENTION : impossible de vérifier les fichiers depuis le conteneur. Consulter docker compose logs app." >&2
+fi
 mkdir -p data
 if [[ -f data/mac-agent.pid ]]; then
   old="$(cat data/mac-agent.pid)"
@@ -67,4 +89,4 @@ echo "2N Color : http://127.0.0.1:${PORT:-8765}"
 echo "Agent macOS PID : $(cat data/mac-agent.pid)"
 echo "Logs agent : tail -f data/mac-agent.log"
 echo "Pour arrêter : ./stop.sh"
-echo "Si les fichiers sont absents, vérifier les mounts Colima."
+echo "Répertoire actif : $MEDIA_ROOT (choix des sous-dossiers dans l’interface web)"
