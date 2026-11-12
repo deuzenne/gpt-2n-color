@@ -18,12 +18,13 @@ from pydantic import BaseModel
 
 ROOT = Path(os.environ.get("MEDIA_ROOT", "/library")).resolve()
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
+DISPLAY_ROOT = PurePosixPath(os.environ.get("MEDIA_ROOT_DISPLAY", str(ROOT)))
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
                     ".wmv", ".ts", ".mts", ".m2ts"}
 SKIP_DIRS = {"_2n_convertis", "_medias_vu"}
 COLORS = {"orange": 1, "rouge": 2, "jaune": 3, "bleu": 4,
           "violet": 5, "vert": 6, "gris": 7, "aucune": 0}
-VERSION = "0.1.0+build.0001"
+VERSION = "0.1.1+build.0002"
 
 app = FastAPI(title="2N Color", version=VERSION, docs_url=None, redoc_url=None)
 lock = threading.RLock()
@@ -87,6 +88,40 @@ def resolve_path(relative: str, *, directory: bool | None = None) -> Path:
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
+def select_directory(path_text: str) -> Path:
+    """Accepter un sous-chemin ou le chemin absolu macOS configuré.
+
+    Une URL ne peut pas élargir le volume autorisé par Docker Compose :
+    seuls les descendants de MEDIA_ROOT sont sélectionnables.
+    """
+    value = path_text.strip()
+    if "\x00" in value:
+        raise HTTPException(400, "Chemin invalide")
+    if value.startswith("/"):
+        requested = PurePosixPath(value)
+        if ".." in requested.parts:
+            raise HTTPException(400, "Le chemin ne doit pas contenir '..'")
+        if requested == DISPLAY_ROOT:
+            value = ""
+        elif DISPLAY_ROOT in requested.parents:
+            value = requested.relative_to(DISPLAY_ROOT).as_posix()
+        elif requested == PurePosixPath(str(ROOT)):
+            value = ""
+        elif PurePosixPath(str(ROOT)) in requested.parents:
+            value = requested.relative_to(PurePosixPath(str(ROOT))).as_posix()
+        else:
+            raise HTTPException(
+                403, "Ce dossier est hors du volume partagé avec Colima. "
+                     "Sur le Mac, relancer ./deploy.sh '/chemin/du/dossier' "
+                     "pour changer la bibliothèque.")
+    return resolve_path(value, directory=True)
+
+
+def display_path(path: Path) -> str:
+    relative = rel(path)
+    return str(DISPLAY_ROOT / relative) if relative != "." else str(DISPLAY_ROOT)
+
+
 
 def enumerate_videos(folder: Path, recursive: bool) -> list[dict]:
     results = []
@@ -147,23 +182,36 @@ def health():
 
 @app.get("/api/tree")
 def tree(directory: str = ""):
-    folder = resolve_path(directory, directory=True)
+    folder = select_directory(directory)
     children = []
+    videos = []
+    total_entries = 0
     try:
         for entry in folder.iterdir():
-            if entry.is_symlink() or not entry.is_dir():
+            total_entries += 1
+            if entry.is_symlink():
                 continue
-            children.append({"name": entry.name, "path": rel(entry),
-                             "excluded": entry.name in SKIP_DIRS})
+            if entry.is_dir():
+                children.append({"name": entry.name, "path": rel(entry),
+                                 "excluded": entry.name in SKIP_DIRS})
+            elif entry.is_file() and entry.suffix.casefold() in VIDEO_EXTENSIONS:
+                try:
+                    videos.append({"name": entry.name, "bytes": entry.stat().st_size})
+                except OSError:
+                    pass
     except OSError:
         raise HTTPException(403, "Dossier inaccessible")
     children.sort(key=lambda v: v["name"].casefold())
-    return {"path": rel(folder), "root_name": ROOT.name, "directories": children}
+    videos.sort(key=lambda v: (-v["bytes"], v["name"].casefold()))
+    return {"path": rel(folder), "display_path": display_path(folder),
+            "root_name": DISPLAY_ROOT.name, "directories": children,
+            "video_count": len(videos), "video_samples": videos[:8],
+            "total_entries": total_entries}
 
 
 @app.post("/api/sessions")
 def start_session(req: SessionRequest):
-    folder = resolve_path(req.directory, directory=True)
+    folder = select_directory(req.directory)
     with lock:
         if len(sessions) >= 6:
             # Conserver seulement les plus récentes sessions.
@@ -172,13 +220,17 @@ def start_session(req: SessionRequest):
     videos = enumerate_videos(folder, req.recursive)
     sid = secrets.token_urlsafe(12)
     with lock:
-        session = {"id": sid, "directory": req.directory,
+        session = {"id": sid, "directory": rel(folder),
                    "recursive": req.recursive, "created": time.time(),
                    "total_files": len(videos), "total_bytes": sum(v["bytes"] for v in videos),
                    "candidates": videos, "pending": [], "history": [],
                    "tagged": 0, "skipped": 0, "none": 0,
                    "scan_done": 0, "scan_errors": 0,
-                   "error": None, "busy": False,
+                   "error": ("Aucune vidéo prise en charge trouvée dans ce dossier. "
+                             "Si le Mac contient des fichiers ici, vérifier "
+                             "le montage du volume dans Colima."
+                             if not videos else None),
+                   "colored_count": 0, "busy": False,
                    "status": "scanning" if videos else "ready"}
         sessions[sid] = session
         if videos:
@@ -192,7 +244,9 @@ def view(session: dict) -> dict:
     return {"id": session["id"], "directory": session["directory"],
             "status": session["status"], "total_files": session["total_files"],
             "total_bytes": session["total_bytes"], "scan_done": session["scan_done"],
-            "scan_errors": session["scan_errors"], "queue_size": len(pending),
+            "scan_errors": session["scan_errors"],
+            "colored_count": session.get("colored_count", 0),
+            "queue_size": len(pending),
             "remaining_bytes": sum(x["bytes"] for x in pending),
             "classified": session["tagged"], "skipped": session["skipped"],
             "none": session["none"], "reviewed": reviewed,
@@ -316,12 +370,16 @@ def agent_result(data: AgentResult, x_agent_token: str | None = Header(default=N
                 uncolored = {p for p, label in zip(job["files"], data.colors) if label == 0}
                 s["pending"] = [item for item in s["candidates"]
                                 if item["path"] in uncolored]
+                s["colored_count"] = sum(v in range(1, 8) for v in data.colors
+                                         if v is not None)
                 s["scan_done"] = len(job["files"])
                 s["scan_errors"] = sum(1 for v in data.colors if v is None)
                 s["status"] = "ready"
                 s["error"] = (f"{s['scan_errors']} pastille(s) Finder illisible(s) : "
                               "fichiers exclus par sécurité"
-                              if s["scan_errors"] else None)
+                              if s["scan_errors"] else
+                              (f"{s['colored_count']} vidéos détectées, mais déjà toutes "
+                               "colorées dans Finder." if not s["pending"] else None))
             else:
                 s["status"] = "error"
                 s["error"] = data.error or "Lecture Finder incomplète"
