@@ -17,6 +17,15 @@ jobs:
         run: python -m compileall -q app mac_agent.py tests
       - name: Exécuter les tests
         run: pytest -q
+      - name: Vérifier JavaScript Safari/Firefox
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("app/static/index.html").read_text(encoding="utf-8")
+          js = html.split("<script>", 1)[1].split("</script>", 1)[0]
+          Path("/tmp/2n-color-ui.js").write_text(js, encoding="utf-8")
+          PY
+          node --check /tmp/2n-color-ui.js
       - name: Valider Docker Compose
         run: |
           MEDIA_ROOT=/tmp PORT=8765 AGENT_TOKEN=test123 docker compose config --quiet
