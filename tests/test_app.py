@@ -48,7 +48,7 @@ def test_tree_navigation_and_path_safety(env):
     assert names == {"vacances", "_2n_convertis"}
     assert any(x["excluded"] for x in resp["directories"])
     assert client.get("/api/tree", params={"directory": "../"}).status_code == 400
-    assert client.get("/api/tree", params={"directory": "/etc"}).status_code == 400
+    assert client.get("/api/tree", params={"directory": "/etc"}).status_code == 403
     assert client.get("/api/tree", params={"directory": "vacances"}).status_code == 200
     (root / "escape").symlink_to(root.parent)
     assert client.get("/api/tree", params={"directory": "escape"}).status_code == 403
