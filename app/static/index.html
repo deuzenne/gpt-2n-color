@@ -34,8 +34,7 @@
     .videozone{aspect-ratio:16/9;background:linear-gradient(135deg,#06090e,#0c1320);border:1px solid #0a1222;border-radius:12px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
     video{display:none;width:100%;height:100%;object-fit:contain;background:#040609}video.visible{display:block}.placeholder{padding:20px;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
     .placeholder .glyph{font-size:51px;line-height:1;opacity:.65}.placeholder strong{color:var(--text);font-size:19px}
-    .bar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:15px}.bar .grow{flex:1;min-width:120px}
-    input[type=range]{width:100%;height:5px;accent-color:var(--cyan);cursor:pointer}
+    .bar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:15px}
     .timer{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}.smallbtn{background:var(--surface2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 11px;min-width:44px}
     .smallbtn:hover{border-color:var(--cyan)}.speed{color:var(--cyan);font-weight:780}
     .mode{background:#213348;color:#a3d8ee;padding:5px 10px;border-radius:7px;font-size:11px}
@@ -132,9 +131,10 @@
             <div class="placeholder" id="placeholder"><div class="glyph">▶</div><strong>Aucune vidéo chargée</strong><span>Le lecteur s'ouvrira sur la plus volumineuse sans couleur Finder.</span></div>
           </div>
           <div class="bar">
-            <button class="smallbtn" id="rewindBtn" title="Reculer de 10 secondes">−10s</button>
-            <button class="smallbtn" id="forwardBtn" title="Avancer de 10 secondes">+10s</button>
-            <div class="grow"><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position dans la vidéo"></div>
+            <button class="smallbtn" id="rewind30Btn" title="Reculer de 30 secondes">−30 s</button>
+            <button class="smallbtn" id="rewindBtn" title="Reculer de 10 secondes">−10 s</button>
+            <button class="smallbtn" id="forwardBtn" title="Avancer de 10 secondes">+10 s</button>
+            <button class="smallbtn" id="forward30Btn" title="Avancer de 30 secondes">+30 s</button>
             <span class="timer" id="clock">00:00 / 00:00</span>
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
           </div>
@@ -283,7 +283,7 @@
   function stopVideo(){
     $("fileName").classList.remove("video-title");
     video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
-    activePath=null;duration=0;offset=0;$("seek").value=0;$("clock").textContent="00:00 / 00:00";
+    activePath=null;duration=0;offset=0;$("clock").textContent="00:00 / 00:00";
   }
   function videoUrl(path,start=0){return `/api/preview?path=${qs(path)}&start=${start.toFixed(1)}`}
   function startPreview(start=0){
@@ -316,7 +316,6 @@
   function position(){return (mode==="preview"?offset:0)+(Number.isFinite(video.currentTime)?video.currentTime:0)}
   function updateClock(){
     const p=position();$("clock").textContent=fmtTime(p)+" / "+fmtTime(duration);
-    if(duration)$("seek").value=Math.round(Math.min(1,p/duration)*1000);
   }
   function seekTo(sec){
     if(!activePath)return;
@@ -331,9 +330,10 @@
   });
   video.addEventListener("loadedmetadata",()=>{if(!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
   video.addEventListener("canplay",()=>{video.playbackRate=speed});
-  $("seek").addEventListener("change",e=>{if(duration)seekTo(Number(e.target.value)/1000*duration)});
+  $("rewind30Btn").onclick=()=>seekTo(position()-30);
   $("rewindBtn").onclick=()=>seekTo(position()-10);
   $("forwardBtn").onclick=()=>seekTo(position()+10);
+  $("forward30Btn").onclick=()=>seekTo(position()+30);
   $("speedBtn").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;video.playbackRate=speed;$("speedBtn").textContent="×"+speed};
   $("scanBtn").onclick=scan;$("rootBtn").onclick=()=>browse("");
   $("openDirBtn").onclick=()=>browse($("dirInput").value.trim());
