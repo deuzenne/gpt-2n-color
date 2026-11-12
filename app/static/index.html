@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d111a">
+  <title>2N Color — Classement vidéo</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0d111a;--surface:#171e2b;--surface2:#212b3d;--line:#2c3548;--text:#eaf1fa;--muted:#94a2b9;--cyan:#71d2e5;--accent:#7199fb;--radius:16px}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+    button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.4}button:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+    .app{max-width:1660px;min-height:100vh;margin:auto;padding:18px 24px 30px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:4px 0 19px}
+    .brand{display:flex;align-items:center;gap:13px}.brandmark{background:linear-gradient(135deg,#75e4dd,#587af1);border-radius:14px;width:44px;height:44px;display:grid;place-items:center;font-size:22px;color:#0a1423;font-weight:900}
+    .brand h1{margin:0;font-size:21px;font-weight:760;letter-spacing:-.5px}.brand small{color:var(--muted);font-size:12px}.topstatus{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .status{border:1px solid var(--line);border-radius:99px;padding:7px 12px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}.dot{width:8px;height:8px;background:#e9ad55;border-radius:50%}.dot.online{background:#52d0a0;box-shadow:0 0 0 3px #52d0a01d}
+    .layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:22px;padding-top:23px}
+    .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+    .sidebar{padding:20px;align-self:start;position:sticky;top:15px}.overline{font-size:10px;letter-spacing:1.7px;color:var(--cyan);text-transform:uppercase;font-weight:800}
+    .sidebar h2{font-size:16px;margin:8px 0 14px}.path{border:1px solid var(--line);border-radius:10px;padding:10px 11px;overflow-wrap:anywhere;font-size:12px;color:var(--muted);line-height:1.5;min-height:42px}
+    .folderhead{display:flex;align-items:center;justify-content:space-between;gap:5px;margin:16px 0 10px}
+    .folders{max-height:min(39vh,380px);overflow:auto;display:flex;flex-direction:column;gap:4px}.folder{display:flex;width:100%;align-items:center;gap:10px;border:0;background:none;color:var(--text);padding:11px 9px;border-radius:9px;text-align:left;font-size:13px}
+    .folder:hover{background:var(--surface2)}.folder .chevron{margin-left:auto;color:var(--muted)}.folder .foldericon{color:#f7c979}
+    .folder.excluded{opacity:.52}.folder small{color:var(--muted)}.breadcrumbs{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+    .breadcrumbs button{padding:4px 7px;border:0;background:none;color:var(--cyan);font-size:12px}.breadcrumbs button:hover{text-decoration:underline}
+    .divider{height:1px;background:var(--line);margin:20px 0}.checkline{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:14px 0}.checkline input{accent-color:var(--accent);width:17px;height:17px}
+    .button{border-radius:11px;padding:12px 16px;border:1px solid var(--line);color:var(--text);background:var(--surface2);font-weight:650}
+    .button:hover:not(:disabled){border-color:#9cabc9}.button.primary{background:var(--accent);border-color:var(--accent);color:#0a1328}
+    .button.wide{width:100%}.muted{color:var(--muted)}.tiny{font-size:12px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .stat{border:1px solid var(--line);background:#111826;padding:12px;border-radius:10px}.stat strong{display:block;font-size:24px;line-height:1.2}.stat span{display:block;color:var(--muted);font-size:11px;margin-top:5px}
+    .main{min-width:0;display:flex;flex-direction:column;gap:17px}
+    .playerpanel{padding:19px}.sectiontop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:15px}.sectiontop h2{font-size:19px;margin:4px 0;line-height:1.3;overflow-wrap:anywhere}
+    .sectiontop .detail{font-size:12px;color:var(--muted)}.num{color:var(--cyan);font-weight:740}
+    .videozone{aspect-ratio:16/9;background:linear-gradient(135deg,#06090e,#0c1320);border:1px solid #0a1222;border-radius:12px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    video{display:none;width:100%;height:100%;object-fit:contain;background:#040609}video.visible{display:block}.placeholder{padding:20px;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+    .placeholder .glyph{font-size:51px;line-height:1;opacity:.65}.placeholder strong{color:var(--text);font-size:19px}
+    .bar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:15px}.bar .grow{flex:1;min-width:120px}
+    input[type=range]{width:100%;height:5px;accent-color:var(--cyan);cursor:pointer}
+    .timer{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}.smallbtn{background:var(--surface2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 11px;min-width:44px}
+    .smallbtn:hover{border-color:var(--cyan)}.speed{color:var(--cyan);font-weight:780}
+    .mode{background:#213348;color:#a3d8ee;padding:5px 10px;border-radius:7px;font-size:11px}
+    .classification{padding:21px}.classhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
+    .classhead h2{margin:0;font-size:16px}.classhead span{font-size:12px;color:var(--muted)}.palette{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:9px}
+    .swatch{border:1px solid var(--line);background:#131a27;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:93px;color:var(--text)}
+    .swatch:hover:not(:disabled){background:var(--surface2);transform:translateY(-2px);border-color:#7b8baa}.swatch:active:not(:disabled){transform:translateY(0)}
+    .swatch .circle{height:29px;width:29px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 4px #ffffff0c}.swatch .txt{font-size:12px;font-weight:650}
+    .swatch .key{font-size:10px;color:var(--muted);margin-top:-7px}.secondaryactions{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}
+    .secondaryactions .button{font-size:13px;flex:1}.message{margin-top:15px;font-size:12px;color:var(--muted);line-height:1.5}
+    .notice{background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+    .progress{height:6px;background:#222c3e;border-radius:8px;overflow:hidden;margin:14px 0 6px}.progress>div{height:100%;background:linear-gradient(90deg,#5e92ed,#7cdae2);transition:width .2s}
+    .toast{position:fixed;bottom:24px;right:24px;background:#25344a;color:#fff;border:1px solid #527294;border-radius:12px;padding:12px 17px;max-width:min(500px,90vw);box-shadow:0 16px 50px #0008;z-index:100;display:none}
+    .foot{text-align:center;font-size:11px;color:#6f7d96;margin-top:22px}
+    @media(max-width:1010px){.layout{grid-template-columns:1fr}.sidebar{position:static}.folders{max-height:220px}.palette{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    @media(max-width:580px){.app{padding:12px}.topbar{align-items:flex-start}.topstatus{justify-content:flex-end}.status{font-size:10px;padding:5px 7px}.layout{gap:12px;padding-top:12px}.playerpanel,.classification,.sidebar{padding:14px}.palette{gap:6px}.swatch{min-height:83px}.sectiontop h2{font-size:16px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><div class="brandmark">2N</div><div><h1>Color <span style="color:var(--cyan)">Studio</span></h1><small>Classement vidéo · macOS + Colima</small></div></div>
+      <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span></div>
+    </header>
+    <div class="layout">
+      <aside class="panel sidebar">
+        <span class="overline">Bibliothèque</span>
+        <h2>Choisir un dossier</h2>
+        <div class="path" id="rootPath">Chargement…</div>
+        <div class="folderhead"><div class="breadcrumbs" id="breadcrumbs"></div><button id="rootBtn" class="smallbtn" title="Retour à la racine">⌂</button></div>
+        <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
+        <div class="divider"></div>
+        <label class="checkline"><input type="checkbox" id="recursive" checked> Inclure les sous-dossiers</label>
+        <button class="button primary wide" id="scanBtn">◉ Analyser les vidéos sans couleur</button>
+        <p class="tiny muted" style="line-height:1.5">Du fichier le plus lourd au plus léger. Les archives 2N et les fichiers déjà colorés ne passent pas dans la file.</p>
+        <div class="divider"></div>
+        <span class="overline">Progression</span>
+        <div class="progress"><div id="progressBar" style="width:0%"></div></div>
+        <div class="stats">
+          <div class="stat"><strong id="statRemaining">—</strong><span>À classer</span></div>
+          <div class="stat"><strong id="statDone">—</strong><span>Traitées</span></div>
+          <div class="stat"><strong id="statVolume">—</strong><span>Volume restant</span></div>
+          <div class="stat"><strong id="statTotal">—</strong><span>Vidéos analysées</span></div>
+        </div>
+        <p id="scanStatus" class="tiny muted" style="margin-bottom:0;line-height:1.55">Sélectionne ton répertoire pour commencer.</p>
+      </aside>
+      <main class="main">
+        <section class="panel playerpanel">
+          <div class="sectiontop">
+            <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
+            <div class="mode" id="playMode">LECTURE LOCALE</div>
+          </div>
+          <div class="videozone">
+            <video id="player" playsinline controls preload="metadata"></video>
+            <div class="placeholder" id="placeholder"><div class="glyph">▶</div><strong>Aucune vidéo chargée</strong><span>Le lecteur s'ouvrira sur la plus volumineuse sans couleur Finder.</span></div>
+          </div>
+          <div class="bar">
+            <button class="smallbtn" id="rewindBtn" title="Reculer de 10 secondes">−10s</button>
+            <button class="smallbtn" id="forwardBtn" title="Avancer de 10 secondes">+10s</button>
+            <div class="grow"><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position dans la vidéo"></div>
+            <span class="timer" id="clock">00:00 / 00:00</span>
+            <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
+          </div>
+          <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
+        </section>
+        <section class="panel classification">
+          <div class="classhead"><h2>Attribuer une couleur Finder</h2><span>Un clic → vidéo suivante</span></div>
+          <div class="palette" id="palette"></div>
+          <div class="secondaryactions">
+            <button class="button" id="undoBtn" disabled>↶ Annuler la dernière</button>
+            <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
+            <button class="button" id="skipBtn" disabled>Passer →</button>
+          </div>
+          <p class="message">Raccourcis : <b>1–7</b> couleurs, <b>0</b> aucune, <b>S</b> passer, <b>U</b> annuler, <b>Espace</b> pause, <b>←/→</b> reculer/avancer. Une couleur rouge ne supprime jamais la vidéo.</p>
+          <div id="errorNotice" class="notice" hidden></div>
+        </section>
+      </main>
+    </div>
+    <footer class="foot">2N Color · Tri local sans suppression ni conversion permanente · Le dossier est monté en lecture seule dans Colima.</footer>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const palette = [["Rouge","#e45d65"],["Violet","#af81ee"],["Vert","#4bc99d"],["Bleu","#689df7"],["Gris","#919cab"],["Jaune","#e7c965"],["Orange","#efa66c"]];
+  let directory = "", sessionId = null, state = null, activePath = null;
+  let mode = "direct", duration = 0, offset = 0, speed = 1, fallbackAttempted = false, pollBusy = false;
+  let lastErrorText = "", toastTimer = null;
+  const video = $("player");
+  const esc = (value) => String(value).replace(/[&<>"']/g, (x) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]));
+  const fmtSize = (n) => { if(!Number.isFinite(n))return "—"; const u=["o","Kio","Mio","Gio","Tio"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return ${n.toLocaleString("fr-FR",{maximumFractionDigits:i?1:0})} ${u[i]}; };
+  const fmtTime = (sec) => { sec=Math.max(0,Math.floor(sec||0));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; };
+  function notice(text, timeout=4000){const el=$("toast");el.textContent=text;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",timeout)}
+  async function api(path, options={}) {
+    const res=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+    if(!res.ok){let msg=`Erreur HTTP ${res.status}`;try{const j=await res.json();msg=j.detail||msg}catch{}throw new Error(msg)}
+    return res.json();
+  }
+  const qs=(x)=>encodeURIComponent(x);
+  async function health(){
+    try {const h=await api("/api/health");$("rootPath").textContent=h.root.replace("/library","Bibliothèque montée /library");$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
+    catch{$("agentText").textContent="Serveur indisponible";$("agentDot").classList.remove("online")}
+  }
+  async function browse(path=""){
+    directory=path;
+    try {
+      const d=await api("/api/tree?directory="+qs(path));
+      $("breadcrumbs").innerHTML="";
+      let segments=[{name:d.root_name||"Racine",path:""}],p="";
+      if(path){for(const seg of path.split("/")){p=p?p+"/"+seg:seg;segments.push({name:seg,path:p})}}
+      segments.forEach((part,i)=>{const b=document.createElement("button");b.textContent=(i?"› ":"")+part.name;b.onclick=()=>browse(part.path);$("breadcrumbs").appendChild(b)});
+      const list=$("folders");list.innerHTML="";
+      if(!d.directories.length){list.textContent="Aucun sous-dossier.";list.className="folders muted tiny";}
+      for(const folder of d.directories){
+        const row=document.createElement("button");row.className="folder"+(folder.excluded?" excluded":"");
+        row.innerHTML=`<span class="foldericon">▰</span><span>${esc(folder.name)}${folder.excluded?" <small>(archivé)</small>":""}</span><span class="chevron">›</span>`;
+        row.onclick=()=>browse(folder.path);list.appendChild(row);
+      }
+    }catch(err){notice(err.message)}
+  }
+  function createPalette(){
+    const area=$("palette");area.innerHTML="";
+    for(const [i,[name,color]] of palette.entries()){
+      const btn=document.createElement("button");btn.className="swatch";btn.disabled=true;btn.style.setProperty("--swatch",color);
+      btn.innerHTML=`<span class="circle"></span><span class="txt">${name}</span><span class="key">${i+1}</span>`;
+      btn.dataset.color=name.toLowerCase();btn.onclick=()=>choose(name.toLowerCase());area.appendChild(btn);
+    }
+  }
+  function canAct(){return state&&state.status==="ready"&&state.current&&!state.busy}
+  function buttons(){
+    for(const node of $("palette").children)node.disabled=!canAct();
+    $("noneBtn").disabled=$("skipBtn").disabled=!canAct();
+    $("undoBtn").disabled=!(state&&state.can_undo);
+  }
+  async function scan(){
+    try{
+      $("scanBtn").disabled=true;sessionId=null;state=null;activePath=null;stopVideo();
+      const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:$("recursive").checked})});
+      sessionId=s.id;await poll();
+    }catch(err){notice(err.message,6500)}
+    finally{$("scanBtn").disabled=false}
+  }
+  async function poll(){
+    if(!sessionId||pollBusy)return;
+    pollBusy=true;
+    try{
+      const s=await api("/api/sessions/"+qs(sessionId));state=s;
+      $("statRemaining").textContent=s.status==="scanning"?"…":s.queue_size;
+      $("statDone").textContent=s.reviewed;
+      $("statVolume").textContent=fmtSize(s.remaining_bytes);
+      $("statTotal").textContent=s.total_files;
+      const progress=s.status==="scanning"?(s.total_files?s.scan_done/s.total_files:1):((s.queue_size+s.reviewed)?s.reviewed/(s.queue_size+s.reviewed):1);
+      $("progressBar").style.width=${Math.min(100,Math.floor(progress*100))}+"%";
+      $("scanStatus").textContent=s.status==="scanning"?`Lecture des pastilles Finder : ${s.scan_done} / ${s.total_files}…`:
+       s.status==="error"?"Analyse incomplète — voir erreur ci-dessous.":
+       `${s.reviewed} traitée(s), ${s.classified} colorée(s), ${s.skipped} passée(s), ${s.none} revue(s) sans couleur.`;
+      const err=s.error||"";
+      $("errorNotice").hidden=!err;$("errorNotice").textContent=err;
+      if(err&&err!==lastErrorText){notice(err,7000);lastErrorText=err} if(!err)lastErrorText="";
+      buttons();
+      if(s.status==="scanning"){
+        $("fileName").textContent="Analyse des pastilles Finder…";
+        $("fileDetails").textContent="Aucun fichier coloré ne sera présenté.";
+      }else if(s.current){
+        if(activePath!==s.current.path)await loadVideo(s.current);
+      }else if(s.status==="ready"){
+        if(activePath!==null)stopVideo();
+        $("fileName").textContent=s.total_files===0?"Aucune vidéo trouvée":"Toutes les vidéos sont classées !";
+        $("fileDetails").textContent=s.total_files===0?"Essaie un autre dossier.":"Il ne reste aucune vidéo sans couleur dans cette session.";
+        $("placeholder").innerHTML='<div class="glyph">✓</div><strong>Session terminée</strong><span>Tu peux sélectionner un autre dossier.</span>';
+      }
+    }catch(err){notice(err.message,6000)}
+    finally{pollBusy=false}
+  }
+  async function choose(color){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/color",{method:"POST",body:JSON.stringify({color})});await poll()}catch(err){notice(err.message)}}
+  async function skip(){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/skip",{method:"POST"});await poll()}catch(err){notice(err.message)}}
+  async function undo(){if(!state||!state.can_undo)return;try{await api("/api/sessions/"+qs(sessionId)+"/undo",{method:"POST"});await poll()}catch(err){notice(err.message)}}
+  function stopVideo(){
+    video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
+    activePath=null;duration=0;offset=0;$("seek").value=0;$("clock").textContent="00:00 / 00:00";
+  }
+  function videoUrl(path,start=0){return `/api/preview?path=${qs(path)}&start=${start.toFixed(1)}`}
+  function startPreview(start=0){
+    if(!activePath)return;
+    mode="preview";offset=Math.max(0,start);fallbackAttempted=true;
+    $("playMode").textContent="APERÇU FFMPEG";
+    video.pause();video.src=videoUrl(activePath,offset);video.load();
+    video.play().catch(()=>{});
+  }
+  async function loadVideo(item){
+    stopVideo();activePath=item.path;fallbackAttempted=false;mode=/\.(mp4|m4v|mov)$/i.test(item.name)?"direct":"preview";
+    $("fileName").textContent=item.name;
+    $("fileDetails").textContent=`${fmtSize(item.bytes)} · ${item.path}`;
+    $("placeholder").style.display="none";video.classList.add("visible");
+    $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"APERÇU FFMPEG";
+    video.src=mode==="direct"?`/api/video?path=${qs(item.path)}`:videoUrl(item.path);
+    video.load();video.playbackRate=speed;video.play().catch(()=>{});
+    try{
+      const info=await api("/api/probe?path="+qs(item.path));
+      if(activePath!==item.path)return;
+      duration=info.duration||0;
+      $("fileDetails").textContent=`${fmtSize(item.bytes)} · ${info.width||"?"}×${info.height||"?"} · ${info.codec} · ${fmtTime(duration)} · ${item.path}`;
+      updateClock();
+    }catch{}
+  }
+  function position(){return (mode==="preview"?offset:0)+(Number.isFinite(video.currentTime)?video.currentTime:0)}
+  function updateClock(){
+    const p=position();$("clock").textContent=fmtTime(p)+" / "+fmtTime(duration);
+    if(duration)$("seek").value=Math.round(Math.min(1,p/duration)*1000);
+  }
+  function seekTo(sec){
+    if(!activePath)return;
+    sec=Math.max(0,Math.min(duration||Number.MAX_SAFE_INTEGER,sec));
+    if(mode==="preview")startPreview(sec);else{try{video.currentTime=sec}catch{}}
+    updateClock();
+  }
+  video.addEventListener("timeupdate",updateClock);
+  video.addEventListener("error",()=>{
+    if(activePath&&mode==="direct"&&!fallbackAttempted){notice("Codec non lisible directement : aperçu FFmpeg");startPreview(0)}
+    else if(activePath&&mode==="preview")$("playHelp").textContent="Aperçu indisponible pour cette vidéo. Le fichier original reste intact.";
+  });
+  video.addEventListener("loadedmetadata",()=>{if(!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
+  video.addEventListener("canplay",()=>{video.playbackRate=speed});
+  $("seek").addEventListener("change",e=>{if(duration)seekTo(Number(e.target.value)/1000*duration)});
+  $("rewindBtn").onclick=()=>seekTo(position()-10);
+  $("forwardBtn").onclick=()=>seekTo(position()+10);
+  $("speedBtn").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;video.playbackRate=speed;$("speedBtn").textContent="×"+speed};
+  $("scanBtn").onclick=scan;$("rootBtn").onclick=()=>browse("");
+  $("skipBtn").onclick=skip;$("undoBtn").onclick=undo;$("noneBtn").onclick=()=>choose("aucune");
+  document.addEventListener("keydown",e=>{
+    if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||["INPUT","TEXTAREA"].includes(document.activeElement?.tagName))return;
+    const n=Number(e.key);
+    if(e.key>="1"&&e.key<="7"&&canAct()){e.preventDefault();choose(palette[n-1][0].toLowerCase())}
+    else if(e.key==="0"&&canAct()){e.preventDefault();choose("aucune")}
+    else if(e.key.toLowerCase()==="s"&&canAct()){e.preventDefault();skip()}
+    else if(e.key.toLowerCase()==="u"&&state?.can_undo){e.preventDefault();undo()}
+    else if(e.key===" "&&activePath){e.preventDefault();video.paused?video.play():video.pause()}
+    else if(e.key==="ArrowRight"&&activePath){e.preventDefault();seekTo(position()+10)}
+    else if(e.key==="ArrowLeft"&&activePath){e.preventDefault();seekTo(position()-10)}
+  });
+  createPalette();browse();health();
+  setInterval(health,4000);setInterval(poll,700);
+})();
+</script>
+</body>
+</html>
