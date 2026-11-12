@@ -18,6 +18,57 @@ Si Colima n'affiche pas les fichiers d'un disque externe, vérifier `colima star
 
 Pour arrêter : `./stop.sh`. Logs : `docker compose logs -f` et `tail -f data/mac-agent.log`.
 
+## Choisir un répertoire précis depuis Safari ou Firefox
+
+Dans la colonne **Bibliothèque**, le champ **Chemin exact du répertoire**
+accepte un chemin macOS complet, par exemple :
+
+```text
+/Volumes/HDD01-02-3000/Vidéos/Vacances
+```
+
+Cliquer sur **Ouvrir**, vérifier les vidéos présentes (nombre et exemples),
+puis lancer **Analyser les vidéos sans couleur**. Le tri se fait toujours
+par taille décroissante. La navigation par sous-dossiers reste disponible.
+
+Le chemin choisi doit se trouver **dans le répertoire MEDIA_ROOT monté
+dans Colima**. Pour utiliser un tout autre disque ou répertoire racine,
+reconfigurer explicitement le montage avec :
+
+```zsh
+./deploy.sh "/Volumes/AutreDisque/MonDossier"
+```
+
+La commande remonte le nouveau répertoire en **lecture seule** dans Docker
+et redémarre le compagnon Finder sur macOS.
+
+### Si l'écran indique « fichiers absents »
+
+Auparavant, la liste de navigation ne présentait que les dossiers et
+aucune vidéo : même un dossier plein paraissait vide. Désormais, les vidéos
+directement présentes dans le répertoire choisi sont montrées par un
+compteur et une liste d'exemples (sans lecture des tags).
+
+Vérifier séparément les vues Mac et Colima :
+
+```zsh
+ls -lah "/Volumes/HDD01-02-3000"
+docker compose exec -T app ls -lah /library
+```
+
+Si les deux affichages diffèrent, revoir le montage Colima. Le script
+`deploy.sh` signale maintenant le cas où le Mac voit des fichiers mais
+Docker voit un volume vide. Une fois l'analyse lancée, l'application distingue
+**0 fichier vidéo** de **vidéos déjà colorées** et de **tags Finder illisibles**.
+
+### Vue MacBook 13 pouces
+
+Pour Safari et Firefox sur un écran de hauteur réduite, une disposition
+compacte sépare la hauteur disponible entre lecteur et palette :
+la vidéo ne peut plus pousser les **boutons de couleur** sous la fenêtre.
+La liste des dossiers est défilante indépendamment du classement. Les
+petits écrans mobiles gardent une présentation empilée.
+
 ## Parcours
 
 - Choisir un dossier de `MEDIA_ROOT` et l'option sous-dossiers.
@@ -44,4 +95,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.0+build.0001`.
+Version : `0.1.1+build.0002`.
