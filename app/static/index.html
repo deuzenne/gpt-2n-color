@@ -125,7 +125,7 @@
   let lastErrorText = "", toastTimer = null;
   const video = $("player");
   const esc = (value) => String(value).replace(/[&<>"']/g, (x) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]));
-  const fmtSize = (n) => { if(!Number.isFinite(n))return "—"; const u=["o","Kio","Mio","Gio","Tio"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return ${n.toLocaleString("fr-FR",{maximumFractionDigits:i?1:0})} ${u[i]}; };
+  const fmtSize = (n) => { if(!Number.isFinite(n))return "—"; const u=["o","Kio","Mio","Gio","Tio"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return `${n.toLocaleString("fr-FR",{maximumFractionDigits:i?1:0})} ${u[i]}`; };
   const fmtTime = (sec) => { sec=Math.max(0,Math.floor(sec||0));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; };
   function notice(text, timeout=4000){const el=$("toast");el.textContent=text;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",timeout)}
   async function api(path, options={}) {
@@ -187,7 +187,7 @@
       $("statVolume").textContent=fmtSize(s.remaining_bytes);
       $("statTotal").textContent=s.total_files;
       const progress=s.status==="scanning"?(s.total_files?s.scan_done/s.total_files:1):((s.queue_size+s.reviewed)?s.reviewed/(s.queue_size+s.reviewed):1);
-      $("progressBar").style.width=${Math.min(100,Math.floor(progress*100))}+"%";
+      $("progressBar").style.width=Math.min(100,Math.floor(progress*100))+"%";
       $("scanStatus").textContent=s.status==="scanning"?`Lecture des pastilles Finder : ${s.scan_done} / ${s.total_files}…`:
        s.status==="error"?"Analyse incomplète — voir erreur ci-dessous.":
        `${s.reviewed} traitée(s), ${s.classified} colorée(s), ${s.skipped} passée(s), ${s.none} revue(s) sans couleur.`;
