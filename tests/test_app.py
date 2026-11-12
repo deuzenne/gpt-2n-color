@@ -13,6 +13,7 @@ from app import main
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "ROOT", tmp_path)
+    monkeypatch.setattr(main, "DISPLAY_ROOT", main.PurePosixPath(str(tmp_path)))
     monkeypatch.setattr(main, "AGENT_TOKEN", "test-secret" * 5)
     with main.lock:
         main.sessions.clear()
@@ -51,6 +52,73 @@ def test_tree_navigation_and_path_safety(env):
     assert client.get("/api/tree", params={"directory": "vacances"}).status_code == 200
     (root / "escape").symlink_to(root.parent)
     assert client.get("/api/tree", params={"directory": "escape"}).status_code == 403
+
+
+def test_exact_native_mac_folder_path_and_visible_video_preview(env):
+    root, client, headers = env
+    folder = root / "Mes vidéos 2026"
+    folder.mkdir()
+    (folder / "gros.MTS").write_bytes(b"a" * 100)
+    (folder / "petit.ts").write_bytes(b"b" * 7)
+    (folder / "notes.txt").write_bytes(b"readme")
+    nested = folder / "Sous-dossier"
+    nested.mkdir()
+    response = client.get("/api/tree", params={"directory": str(folder)})
+    assert response.status_code == 200, response.text
+    info = response.json()
+    assert info["path"] == "Mes vidéos 2026"
+    assert info["display_path"] == str(folder)
+    assert info["video_count"] == 2
+    assert info["video_samples"][0]["name"] == "gros.MTS"
+    assert info["video_samples"][1]["name"] == "petit.ts"
+    assert info["total_entries"] == 4
+
+    response = client.post("/api/sessions", json={
+        "directory": str(folder), "recursive": False})
+    assert response.status_code == 200
+    jid = client.get("/api/agent/next", headers=headers).json()
+    assert jid["files"] == ["Mes vidéos 2026/gros.MTS",
+                            "Mes vidéos 2026/petit.ts"]
+
+
+def test_outside_shared_volume_is_rejected_with_install_hint(env):
+    root, client, headers = env
+    response = client.get("/api/tree", params={"directory": "/Volumes/OtherDisk/video"})
+    assert response.status_code == 403
+    assert "./deploy.sh" in response.json()["detail"]
+    response = client.post("/api/sessions", json={
+        "directory": "/Volumes/OtherDisk/video", "recursive": True})
+    assert response.status_code == 403
+    assert client.get("/api/tree", params={"directory": str(root) + "/../"}).status_code == 400
+
+
+def test_empty_folder_distinguished_from_already_colored(env):
+    root, client, headers = env
+    (root / "vide").mkdir()
+    response = client.post("/api/sessions", json={
+        "directory": str(root / "vide"), "recursive": True})
+    assert response.status_code == 200
+    state = client.get("/api/sessions/" + response.json()["id"]).json()
+    assert state["total_files"] == 0
+    assert "Aucune vidéo" in state["error"]
+    (root / "colored.mp4").write_bytes(b"sample")
+    sid, job = create_session(client, headers)
+    scan_result(client, headers, job, [4])
+    completed = client.get("/api/sessions/" + sid).json()
+    assert completed["total_files"] == 1
+    assert completed["colored_count"] == 1
+    assert completed["queue_size"] == 0
+    assert "déjà toutes" in completed["error"]
+
+
+def test_interface_contains_direct_path_and_compact_palette():
+    index = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text()
+    assert 'id="dirInput"' in index
+    assert 'id="openDirBtn"' in index
+    assert 'id="folderSummary"' in index
+    assert "grid-template-rows:minmax(0,1fr) auto" in index
+    assert "@media(min-width:761px) and (max-height:950px)" in index
+    assert 'id="palette"' in index
 
 
 def test_inventory_filters_archives_and_orders_by_size(env):
