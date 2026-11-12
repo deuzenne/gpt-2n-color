@@ -1,0 +1,29 @@
+name: gpt-2n-color
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-8765}:8765"
+    environment:
+      MEDIA_ROOT: /library
+      AGENT_TOKEN: ${AGENT_TOKEN:?Run ./deploy.sh to generate .env}
+    volumes:
+      - type: bind
+        source: ${MEDIA_ROOT:?Set MEDIA_ROOT in .env}
+        target: /library
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
