@@ -140,7 +140,7 @@ def require_agent(token: str | None) -> None:
 def health():
     with lock:
         age = time.time() - last_agent_seen
-        return {"ok": True, "version": VERSION, "root": str(ROOT),
+        return {"ok": True, "version": VERSION, "root": os.environ.get("MEDIA_ROOT_DISPLAY", str(ROOT)),
                 "agent_online": age < 45, "agent_age": round(age, 1)
                 if last_agent_seen else None}
 
