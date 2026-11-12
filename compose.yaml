@@ -7,6 +7,7 @@ services:
       - "127.0.0.1:${PORT:-8765}:8765"
     environment:
       MEDIA_ROOT: /library
+      MEDIA_ROOT_DISPLAY: ${MEDIA_ROOT:?Set MEDIA_ROOT in .env}
       AGENT_TOKEN: ${AGENT_TOKEN:?Run ./deploy.sh to generate .env}
     volumes:
       - type: bind
