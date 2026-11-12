@@ -29,7 +29,9 @@ accepte un chemin macOS complet, par exemple :
 
 Cliquer sur **Ouvrir**, vérifier les vidéos présentes (nombre et exemples),
 puis lancer **Analyser les vidéos sans couleur**. Le tri se fait toujours
-par taille décroissante. La navigation par sous-dossiers reste disponible.
+par taille décroissante. La navigation par sous-dossiers reste disponible. Le navigateur mémorise le
+dernier dossier ouvert et le rouvre après un rafraîchissement. Si le dossier
+n’est plus accessible, l’application affiche la racine de la bibliothèque.
 
 Le chemin choisi doit se trouver **dans le répertoire MEDIA_ROOT monté
 dans Colima**. Pour utiliser un tout autre disque ou répertoire racine,
@@ -95,4 +97,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.4+build.0005`.
+Version : `0.1.5+build.0006`.

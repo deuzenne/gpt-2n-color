@@ -209,6 +209,7 @@
     try {const h=await api("/api/health");rootDisplay=h.root;$("rootPath").textContent=h.root;$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
     catch{$("agentText").textContent="Serveur indisponible";$("agentDot").classList.remove("online")}
   }
+  const lastDirectoryKey = "2n-color.last-directory";
   async function browse(path=""){
     if(browsing)return false;
     browsing=true;
@@ -248,9 +249,23 @@
       if(!d.total_entries){
         const info=document.createElement("div");info.textContent="Dossier vide vu depuis Colima. Vérifie son partage avec le Mac.";summary.appendChild(info);
       }
+      try {
+        localStorage.setItem(lastDirectoryKey, d.display_path);
+      } catch {
+        // Le stockage du navigateur peut être désactivé.
+      }
       return true;
     }catch(err){notice(err.message,9000);return false}
     finally{browsing=false}
+  }
+  async function restoreDirectory(){
+    let savedPath;
+    try {
+      savedPath = localStorage.getItem(lastDirectoryKey);
+    } catch {
+      // L’ouverture de la bibliothèque reste possible sans stockage.
+    }
+    if (!savedPath || !(await browse(savedPath))) await browse();
   }
   function createPalette(){
     const area=$("palette");area.innerHTML="";
@@ -395,7 +410,7 @@
     else if(e.key==="ArrowLeft"&&activePath){e.preventDefault();seekTo(position()-10)}
   });
   setupFullscreen();
-  createPalette();browse();health();
+  createPalette();restoreDirectory();health();
   setInterval(health,4000);setInterval(poll,700);
 })();
 </script>
