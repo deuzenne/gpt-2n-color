@@ -13,8 +13,8 @@ services:
       - type: bind
         source: ${MEDIA_ROOT:?Set MEDIA_ROOT in .env}
         target: /library
-        user: "${HOST_UID:-501}:${HOST_GID:-20}"
-    read_only: true
+        read_only: true
+    user: "${HOST_UID:-501}:${HOST_GID:-20}"
     read_only: true
     tmpfs:
       - /tmp:size=512m,noexec,nosuid
