@@ -66,8 +66,8 @@ Docker voit un volume vide. Une fois l'analyse lancée, l'application distingue
 ### Vue MacBook 13 pouces
 
 Pour Safari et Firefox sur un écran de hauteur réduite, une disposition
-compacte sépare la hauteur disponible entre lecteur et palette :
-la vidéo ne peut plus pousser les **boutons de couleur** sous la fenêtre.
+compacte place les **boutons de couleur** à côté de la vitesse de lecture.
+Sur un écran plus étroit, la palette passe à la ligne.
 La liste des dossiers est défilante indépendamment du classement. Les
 petits écrans mobiles gardent une présentation empilée.
 
@@ -97,4 +97,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.5+build.0006`.
+Version : `0.1.6+build.0007`.

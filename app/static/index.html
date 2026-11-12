@@ -39,14 +39,14 @@
     .timer{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}.smallbtn{background:var(--surface2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 11px;min-width:44px}
     .smallbtn:hover{border-color:var(--cyan)}.speed{color:var(--cyan);font-weight:780}
     .mode{background:#213348;color:#a3d8ee;padding:5px 10px;border-radius:7px;font-size:11px}
-    .classification{padding:21px}.classhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
-    .classhead h2{margin:0;font-size:16px}.classhead span{font-size:12px;color:var(--muted)}.palette{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:9px}
-    .swatch{border:1px solid var(--line);background:#131a27;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:93px;color:var(--text)}
-    .swatch:hover:not(:disabled){background:var(--surface2);transform:translateY(-2px);border-color:#7b8baa}.swatch:active:not(:disabled){transform:translateY(0)}
-    .swatch .circle{height:29px;width:29px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 4px #ffffff0c}.swatch .txt{font-size:12px;font-weight:650}
-    .swatch .key{font-size:10px;color:var(--muted);margin-top:-7px}.secondaryactions{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}
+    .palette{display:flex;flex-wrap:wrap;gap:5px}
+    .swatch{border:1px solid var(--line);background:#131a27;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:3px;width:36px;height:34px;padding:0}
+    .swatch:hover:not(:disabled){background:var(--surface2);border-color:var(--cyan)}
+    .swatch .circle{height:14px;width:14px;border-radius:50%;background:var(--swatch)}
+    .swatch .key{font-size:10px;color:var(--muted)}
+    .secondaryactions{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}
     .secondaryactions .button{font-size:13px;flex:1}.message{margin-top:15px;font-size:12px;color:var(--muted);line-height:1.5}
-    .notice{background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+    .notice{margin-top:8px;background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
     .progress{height:6px;background:#222c3e;border-radius:8px;overflow:hidden;margin:14px 0 6px}.progress>div{height:100%;background:linear-gradient(90deg,#5e92ed,#7cdae2);transition:width .2s}
     .toast{position:fixed;bottom:24px;right:24px;background:#25344a;color:#fff;border:1px solid #527294;border-radius:12px;padding:12px 17px;max-width:min(500px,90vw);box-shadow:0 16px 50px #0008;z-index:100;display:none}
     .foot{text-align:center;font-size:11px;color:#6f7d96;margin-top:22px}
@@ -64,27 +64,20 @@
       .folderhead{margin:9px 0 4px}.folders{max-height:18vh;min-height:22px}
       .divider{margin:11px 0}.checkline{margin:8px 0}.sidebar .button{padding:9px}
       .stats{gap:6px}.stat{padding:8px}.stat strong{font-size:19px}.stat span{font-size:10px}
-      .main{min-height:0;max-height:100%;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:9px}
+      .main{min-height:0;max-height:100%;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr)}
       .playerpanel{min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:10px}
       .sectiontop{flex:none;margin-bottom:6px}.sectiontop h2{font-size:16px;margin:2px 0}
       .sectiontop .detail{font-size:11px;line-height:1.25;max-height:2.5em;overflow:hidden}
       .videozone{min-height:0;height:auto;aspect-ratio:auto;flex:1}
       .bar{flex:none;margin-top:7px;gap:8px}.bar .smallbtn{padding:5px 8px}
       .playerpanel .message{display:none}
-      .classification{padding:10px 12px;position:relative}
-      .classhead{margin-bottom:7px}.classhead h2{font-size:14px}
-      .palette{gap:6px}
-      .swatch{min-height:61px;gap:3px;border-radius:9px}
-      .swatch .circle{height:20px;width:20px}
-      .swatch .txt{font-size:11px}.swatch .key{font-size:9px;margin-top:-2px}
       .secondaryactions{margin-top:8px;gap:7px}
       .secondaryactions .button{padding:7px 8px;font-size:12px}
-      .classification .message{font-size:10px;line-height:1.2;margin-top:6px}
       .foot{display:none}
     }
-    @media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:static}.folders{max-height:220px}.palette{grid-template-columns:repeat(4,minmax(0,1fr))}}
-    @media(max-width:760px){.app{height:auto;overflow:visible}.layout{height:auto;overflow:visible}.main{display:flex;max-height:none;overflow:visible}.playerpanel{display:block}.videozone{aspect-ratio:16/9;height:auto;min-height:200px}.classification{position:static}.foot{display:block}}
-    @media(max-width:580px){.app{padding:12px}.topbar{align-items:flex-start}.topstatus{justify-content:flex-end}.status{font-size:10px;padding:5px 7px}.layout{gap:12px;padding-top:12px}.playerpanel,.classification,.sidebar{padding:14px}.palette{gap:6px}.swatch{min-height:83px}.sectiontop h2{font-size:16px}}
+    @media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:static}.folders{max-height:220px}}
+    @media(max-width:760px){.app{height:auto;overflow:visible}.layout{height:auto;overflow:visible}.main{display:flex;max-height:none;overflow:visible}.playerpanel{display:block}.videozone{aspect-ratio:16/9;height:auto;min-height:200px}.foot{display:block}}
+    @media(max-width:580px){.app{padding:12px}.topbar{align-items:flex-start}.topstatus{justify-content:flex-end}.status{font-size:10px;padding:5px 7px}.layout{gap:12px;padding-top:12px}.playerpanel,.sidebar{padding:14px}.sectiontop h2{font-size:16px}}
   </style>
 </head>
 <body>
@@ -141,17 +134,14 @@
             <button class="smallbtn" id="forward30Btn" title="Avancer de 30 secondes">+30 s</button>
             <span class="timer" id="clock">00:00 / 00:00</span>
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
+            <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
           </div>
-          <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
-        </section>
-        <section class="panel classification">
-          <div class="classhead"><h2>Attribuer une couleur Finder</h2><span>Un clic → vidéo suivante</span></div>
-          <div class="palette" id="palette"></div>
           <div class="secondaryactions">
             <button class="button" id="undoBtn" disabled>↶ Annuler la dernière</button>
             <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
             <button class="button" id="skipBtn" disabled>Passer →</button>
           </div>
+          <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
           <p class="message">Raccourcis : <b>1–7</b> couleurs, <b>0</b> aucune, <b>S</b> passer, <b>U</b> annuler, <b>Espace</b> pause, <b>←/→</b> reculer/avancer. Une couleur rouge ne supprime jamais la vidéo.</p>
           <div id="errorNotice" class="notice" hidden></div>
         </section>
@@ -271,7 +261,10 @@
     const area=$("palette");area.innerHTML="";
     for(const [i,[name,color]] of palette.entries()){
       const btn=document.createElement("button");btn.className="swatch";btn.disabled=true;btn.style.setProperty("--swatch",color);
-      btn.innerHTML=`<span class="circle"></span><span class="txt">${name}</span><span class="key">${i+1}</span>`;
+      btn.type="button";
+      btn.title=`${name} (touche ${i+1})`;
+      btn.setAttribute("aria-label",name);
+      btn.innerHTML=`<span class="circle" aria-hidden="true"></span><span class="key" aria-hidden="true">${i+1}</span>`;
       btn.dataset.color=name.toLowerCase();btn.onclick=()=>choose(name.toLowerCase());area.appendChild(btn);
     }
   }
