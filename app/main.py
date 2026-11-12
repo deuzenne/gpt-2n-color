@@ -24,7 +24,7 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
 SKIP_DIRS = {"_2n_convertis", "_medias_vu"}
 COLORS = {"orange": 1, "rouge": 2, "jaune": 3, "bleu": 4,
           "violet": 5, "vert": 6, "gris": 7, "aucune": 0}
-VERSION = "0.1.2+build.0003"
+VERSION = "0.1.3+build.0004"
 
 app = FastAPI(title="2N Color", version=VERSION, docs_url=None, redoc_url=None)
 lock = threading.RLock()
@@ -242,6 +242,7 @@ def view(session: dict) -> dict:
     pending = session["pending"]
     reviewed = len(session["history"])
     return {"id": session["id"], "directory": session["directory"],
+            "recursive": session["recursive"],
             "status": session["status"], "total_files": session["total_files"],
             "total_bytes": session["total_bytes"], "scan_done": session["scan_done"],
             "scan_errors": session["scan_errors"],
