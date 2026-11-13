@@ -24,7 +24,7 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
 SKIP_DIRS = {"_2n_convertis", "_medias_vu"}
 COLORS = {"orange": 1, "rouge": 2, "jaune": 3, "bleu": 4,
           "violet": 5, "vert": 6, "gris": 7, "aucune": 0}
-VERSION = "0.1.11+build.0012"
+VERSION = "0.1.12+build.0013"
 
 app = FastAPI(title="2N Color", version=VERSION, docs_url=None, redoc_url=None)
 lock = threading.RLock()
@@ -213,17 +213,9 @@ def tree(directory: str = ""):
 @app.post("/api/folder-counts")
 def start_folder_counts(req: SessionRequest):
     folder = select_directory(req.directory)
-    children = tree(req.directory)["directories"]
-    files = []
-    counts = {}
-    for child in children:
-        if child["excluded"]:
-            continue
-        videos = enumerate_videos(resolve_path(child["path"], directory=True), req.recursive)
-        counts[child["path"]] = 0
-        files.extend(video["path"] for video in videos)
-        if len(files) > 25000:
-            raise HTTPException(413, "Plus de 25 000 vidéos : choisir un sous-dossier")
+    files = [video["path"] for video in enumerate_videos(folder, recursive=True)]
+    if len(files) > 25000:
+        raise HTTPException(413, "Plus de 25 000 vidéos : choisir un sous-dossier")
     sid = secrets.token_urlsafe(12)
     with lock:
         now = time.time()
@@ -235,12 +227,11 @@ def start_folder_counts(req: SessionRequest):
             raise HTTPException(503, "Finder est déconnecté. Réessaie quand l’agent est connecté.")
         if len(folder_scans) >= 12:
             raise HTTPException(429, "Trop de comptages en cours. Réessaie dans un instant.")
-        scan = {"status": "scanning" if files else "ready", "counts": counts,
+        scan = {"status": "scanning" if files else "ready", "counts": {},
                 "unreadable": {}, "updated": now, "total": len(files), "done": 0}
         folder_scans[sid] = scan
         if files:
-            scan["job_id"] = create_job("scan", sid, files=files, folder_count=True,
-                                        directory=rel(folder))
+            scan["job_id"] = create_job("scan", sid, files=files, folder_count=True)
     return {"id": sid}
 
 
@@ -432,11 +423,10 @@ def agent_result(data: AgentResult, x_agent_token: str | None = Header(default=N
             if scan:
                 scan["updated"] = time.time()
                 if data.ok and data.colors is not None and len(data.colors) == len(job["files"]):
-                    parent = PurePosixPath(job["directory"])
                     for path, color in zip(job["files"], data.colors):
-                        child = str(parent / PurePosixPath(path).relative_to(parent).parts[0])
+                        child = str(PurePosixPath(path).parent)
                         if color == 0:
-                            scan["counts"][child] += 1
+                            scan["counts"][child] = scan["counts"].get(child, 0) + 1
                         elif color is None:
                             scan["unreadable"][child] = scan["unreadable"].get(child, 0) + 1
                     scan["done"] = len(job["files"])

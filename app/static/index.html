@@ -35,6 +35,7 @@
     .folderFilters{display:flex;align-items:center;gap:5px}
     .folderFilters .smallbtn{flex:none;padding:6px 8px}
     .folderFilters .smallbtn[aria-pressed="true"]{color:var(--cyan);border-color:var(--cyan)}
+    .folder.pendingFolder .folderName{white-space:normal;overflow-wrap:anywhere}
     .folderCount{margin-left:auto;color:var(--cyan);white-space:nowrap;font-variant-numeric:tabular-nums}
     .quickFolderList{max-height:76px;overflow:auto}
     .quickFolderList .folder{padding:5px 7px}
@@ -149,7 +150,7 @@
           </details>
           <div class="folderFilters">
             <input type="search" id="folderFilter" class="folderFilter" aria-label="Filtrer les sous-dossiers" placeholder="Filtrer par nom">
-            <button type="button" id="pendingFolders" class="smallbtn" aria-pressed="false" title="Afficher les dossiers contenant des vidéos sans pastille Finder">À traiter</button>
+            <button type="button" id="pendingFolders" class="smallbtn" aria-pressed="false" title="Trouver les dossiers avec des vidéos sans pastille dans toute la branche">À traiter</button>
           </div>
           <div id="folderCountStatus" class="tiny muted" role="status" hidden></div>
           <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
@@ -307,7 +308,7 @@
     let id;
     try {
       ({id} = await api("/api/folder-counts", {method:"POST", body:JSON.stringify({
-        directory, recursive:$("recursive").checked,
+        directory,
       })}));
       while(request===folderCountRequest){
         const result = await api("/api/folder-counts/"+qs(id));
@@ -339,23 +340,33 @@
     }
     const counts = pendingCounts?.counts;
     const unreadable = pendingCounts?.unreadable;
-    const shown = subfolders.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term)
-      && (!pendingOnly || counts[folder.path] > 0));
+    const candidates = counts ? Object.entries(counts)
+      .filter(([,count]) => count > 0)
+      .map(([path]) => ({
+        path: path === "." ? "" : path,
+        countPath: path,
+        name: path === (directory || ".") ? "Dossier courant" :
+          (directory ? path.slice(directory.length + 1) : path).split("/").join(" / "),
+      }))
+      .sort((a,b) => (a.path === directory ? -1 : b.path === directory ? 1 :
+        a.name.localeCompare(b.name,"fr",{numeric:true}))) : subfolders;
+    const shown = candidates.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term));
     list.replaceChildren(...shown.map(folder => {
       const row = folderButton(folder.name, folder.path, folder);
       if(counts){
+        row.className += " pendingFolder";
         const badge = document.createElement("span");
-        const count = counts[folder.path];
+        const count = counts[folder.countPath];
         badge.className = "folderCount";
-        badge.textContent = unreadable[folder.path] ? `${count}+` : String(count);
-        badge.title = unreadable[folder.path] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) à traiter`;
+        badge.textContent = unreadable[folder.countPath] ? `${count}+` : String(count);
+        badge.title = unreadable[folder.countPath] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) à traiter`;
         badge.setAttribute("aria-label",badge.title);
         row.insertBefore(badge,row.lastElementChild);
       }
       return row;
     }));
     if(!shown.length) list.textContent = term ? "Aucun résultat." :
-      counts ? "Aucun sous-dossier avec des vidéos à traiter." : "Aucun sous-dossier.";
+      counts ? "Aucun dossier avec des vidéos à traiter." : "Aucun sous-dossier.";
   }
   function renderQuickFolders(){
     const starred = favorites.includes(currentFolderPath);
@@ -585,7 +596,6 @@
   $("speedBtn").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;video.playbackRate=speed;$("speedBtn").textContent="×"+speed};
   $("recursive").addEventListener("change",()=>{
     updateScanButton();
-    if(pendingOnly)refreshFolderCounts();
   });
   $("pendingFolders").onclick=()=>{
     pendingOnly=!pendingOnly;
