@@ -135,9 +135,9 @@
     .treeFolderIcon{position:relative;display:inline-block;flex:none;width:20px;height:14px;border-radius:2px 3px 3px 3px;background:#d5b775;box-shadow:inset 0 -2px #0002}
     .treeFolderIcon::before{content:"";position:absolute;top:-3px;left:0;width:9px;height:5px;background:#d5b775;border-radius:2px 2px 0 0}
     .homeRow .treeCount{min-width:38px;padding:4px 9px;text-align:center;border-radius:7px;background:#76ded511;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-    #classifyPage{grid-template-columns:minmax(0,1fr) 210px}
-    #classifyPage>.main{grid-column:1;grid-row:1}
-    #classifyPage>.sidebar{grid-column:2;grid-row:1;padding:14px}
+    #classifyPage{grid-template-columns:210px minmax(0,1fr)}
+    #classifyPage>.main{grid-column:2;grid-row:1}
+    #classifyPage>.sidebar{grid-column:1;grid-row:1;padding:14px}
     #classifyPage .sidebarProgress>.divider:first-child{display:none}
     .classifyHeading{display:flex;align-items:center;gap:12px;flex:none;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
     .backToTree{width:40px;height:40px;flex:none;border:1px solid var(--line);border-radius:11px;background:var(--surface2);color:var(--cyan);font-size:24px}
@@ -146,6 +146,7 @@
     #classifyFolder{font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
     @media(max-width:760px){
       #classifyPage{grid-template-columns:minmax(0,1fr)}
+      #classifyPage>.main{grid-column:1;grid-row:1}
       #classifyPage>.sidebar{grid-column:1;grid-row:2}
       .homePage{padding:14px}.homeBranch{margin-left:12px;padding-left:8px}
     }
