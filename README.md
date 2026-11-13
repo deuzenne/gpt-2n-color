@@ -103,7 +103,7 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.15+build.0016`.
+Version : `0.1.16+build.0017`.
 
 En mode **À traiter**, un clic sur un dossier lance le classement de ses vidéos directes.
 La liste reste ancrée sur le dossier de départ. Les compteurs sont mis à jour après
@@ -121,3 +121,6 @@ L’accueil affiche une arborescence dépliable du répertoire choisi.
 masque les branches sans vidéo à traiter. Les compteurs incluent les descendants.
 Un clic sur le nom d’un dossier ouvre le classement de ses vidéos directes.
 **Arborescence** ramène à l’accueil avec ses branches dépliées et son filtre.
+
+La page de classement présente le lecteur et un panneau de progression compact.
+La flèche au-dessus du lecteur ramène à l’arborescence pour changer de dossier.
