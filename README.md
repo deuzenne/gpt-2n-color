@@ -103,7 +103,7 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.16+build.0017`.
+Version : `0.1.17+build.0018`.
 
 En mode **À traiter**, un clic sur un dossier lance le classement de ses vidéos directes.
 La liste reste ancrée sur le dossier de départ. Les compteurs sont mis à jour après
@@ -124,3 +124,6 @@ Un clic sur le nom d’un dossier ouvre le classement de ses vidéos directes.
 
 La page de classement présente le lecteur et un panneau de progression compact.
 La flèche au-dessus du lecteur ramène à l’arborescence pour changer de dossier.
+
+Le calcul affiche une progression centrée, indéterminée pendant l’inventaire,
+puis avec le nombre de vidéos vérifiées et le pourcentage pendant la lecture Finder.

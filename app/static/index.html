@@ -149,6 +149,17 @@
       #classifyPage>.sidebar{grid-column:1;grid-row:2}
       .homePage{padding:14px}.homeBranch{margin-left:12px;padding-left:8px}
     }
+    .homePage{position:relative}
+    .calculationOverlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#101722d9;backdrop-filter:blur(5px);padding:20px;border-radius:inherit}
+    .calculationCard{width:min(420px,100%);padding:27px;border:1px solid #3b566d;border-radius:18px;background:#172332;box-shadow:0 16px 55px #0006}
+    .calculationCard>strong{font-size:18px}
+    .calculationCard p{color:var(--muted);font-size:13px;margin:10px 0 24px}
+    .calculationNumbers{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums}
+    #calculationPercent{color:var(--cyan)}
+    #calculationProgress{display:block;width:100%;height:10px;border:0;border-radius:8px;overflow:hidden;accent-color:var(--cyan)}
+    #calculationProgress::-webkit-progress-bar{background:#29384a}
+    #calculationProgress::-webkit-progress-value{background:var(--cyan);border-radius:8px}
+    #calculationProgress::-moz-progress-bar{background:var(--cyan);border-radius:8px}
   </style>
 </head>
 <body>
@@ -175,6 +186,14 @@
       </form>
       <p id="homeStatus" class="tiny muted" role="status"></p>
       <div id="homeTree" class="homeTree"></div>
+      <div id="folderCalculation" class="calculationOverlay" hidden>
+        <div class="calculationCard">
+          <strong>Analyse de la bibliothèque</strong>
+          <p id="calculationPhase" role="status" aria-live="polite">Inventaire des vidéos…</p>
+          <div class="calculationNumbers"><span id="calculationCount">Recherche des fichiers</span><strong id="calculationPercent">…</strong></div>
+          <progress id="calculationProgress" max="100" aria-label="Progression du calcul des dossiers"></progress>
+        </div>
+      </div>
     </section>
     <div class="layout" id="classifyPage" hidden>
       <aside class="panel sidebar" id="libraryPanel" aria-label="Progression du classement">
@@ -888,9 +907,25 @@
     }catch(error){notice(error.message)}
   }
   $("homeRootForm").onsubmit=event=>{event.preventDefault();loadHomeRoot($("homeRootInput").value.trim())};
+  function calculationProgress(done, total){
+    const percent = total ? Math.min(100,Math.floor(done/total*100)) : 100;
+    $("calculationProgress").value=percent;
+    $("calculationPercent").textContent=percent+" %";
+    $("calculationCount").textContent=done.toLocaleString("fr-FR")+" / "+total.toLocaleString("fr-FR")+" vidéos";
+    $("calculationPhase").textContent="Lecture des pastilles Finder";
+  }
   $("homeCalculate").onclick=async()=>{
     const revision=homeRevision;
+    if($("homeCalculate").disabled)return;
     $("homeCalculate").disabled=true;
+    $("folderCalculation").hidden=false;
+    $("homeTree").setAttribute("aria-busy","true");
+    $("homeRootForm").inert=true;
+    $("homeTree").inert=true;
+    $("calculationProgress").removeAttribute("value");
+    $("calculationPercent").textContent="…";
+    $("calculationCount").textContent="Recherche des fichiers";
+    $("calculationPhase").textContent="Inventaire des vidéos…";
     let id;
     try{
       $("homeStatus").textContent="Inventaire des vidéos…";
@@ -899,7 +934,9 @@
         const result=await api("/api/folder-counts/"+qs(id));
         if(revision!==homeRevision)return;
         if(result.status==="error")throw new Error(result.error);
+        calculationProgress(result.done,result.total);
         if(result.status==="ready"){
+          $("calculationPhase").textContent="Mise à jour de l’arborescence";
           homeInventory=result;homeFiltered=true;
           $("homeShowAll").hidden=false;
           const errors=Object.values(result.unreadable).reduce((a,b)=>a+b,0);
@@ -913,6 +950,10 @@
     }catch(error){if(revision===homeRevision)$("homeStatus").textContent=error.message}
     finally{
       $("homeCalculate").disabled=false;
+      $("folderCalculation").hidden=true;
+      $("homeTree").setAttribute("aria-busy","false");
+      $("homeRootForm").inert=false;
+      $("homeTree").inert=false;
       if(id)api("/api/folder-counts/"+qs(id),{method:"DELETE"}).catch(()=>{});
     }
   };
