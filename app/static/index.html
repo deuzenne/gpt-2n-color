@@ -161,6 +161,10 @@
     #calculationProgress::-webkit-progress-bar{background:#29384a}
     #calculationProgress::-webkit-progress-value{background:var(--cyan);border-radius:8px}
     #calculationProgress::-moz-progress-bar{background:var(--cyan);border-radius:8px}
+    .playerpanel .bar{flex-wrap:nowrap;gap:5px;overflow-x:auto;padding:4px}
+    .playerpanel .bar>*{flex:none;white-space:nowrap}
+    .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
+    .playerpanel .bar .swatch{width:30px}
   </style>
 </head>
 <body>
@@ -272,13 +276,13 @@
             <button class="smallbtn" id="forward30Btn" title="Avancer de 30 secondes">+30 s</button>
             <span class="timer" id="clock">00:00 / 00:00</span>
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
-          </div>
-          <div class="secondaryactions" role="group" aria-label="Classement de la vidéo">
+            <div class="secondaryactions" role="group" aria-label="Classement de la vidéo">
             <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
 
             <button class="button" id="undoBtn" disabled>↶ Annuler</button>
             <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
             <button class="button" id="skipBtn" disabled>Passer →</button>
+            </div>
           </div>
           <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
           <p class="message">Raccourcis : <b>1–7</b> couleurs, <b>0</b> aucune, <b>S</b> passer, <b>U</b> annuler, <b>Espace</b> pause, <b>←/→</b> reculer/avancer. Une couleur rouge ne supprime jamais la vidéo.</p>

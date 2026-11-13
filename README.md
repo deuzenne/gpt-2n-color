@@ -103,7 +103,7 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.19+build.0020`.
+Version : `0.1.20+build.0021`.
 
 En mode **À traiter**, un clic sur un dossier lance le classement de ses vidéos directes.
 La liste reste ancrée sur le dossier de départ. Les compteurs sont mis à jour après
