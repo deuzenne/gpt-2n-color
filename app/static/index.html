@@ -80,8 +80,8 @@
     .swatch:hover:not(:disabled){background:var(--surface2);border-color:var(--cyan)}
     .swatch .circle{height:14px;width:14px;border-radius:50%;background:var(--swatch)}
     .swatch .key{font-size:10px;color:var(--muted)}
-    .secondaryactions{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}
-    .secondaryactions .button{font-size:13px;flex:1}.message{margin-top:15px;font-size:12px;color:var(--muted);line-height:1.5}
+    .secondaryactions{display:flex;align-items:center;gap:6px;margin-top:8px;overflow-x:auto;flex:none}
+    .secondaryactions .palette{flex:none;flex-wrap:nowrap}.secondaryactions .button{font-size:12px;flex:none;white-space:nowrap;padding:7px 8px}.message{margin-top:15px;font-size:12px;color:var(--muted);line-height:1.5}
     .notice{margin-top:8px;background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
     .progressHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .progressPercent{color:var(--cyan);font-size:12px;font-weight:750;font-variant-numeric:tabular-nums}
@@ -139,11 +139,11 @@
     #classifyPage>.main{grid-column:2;grid-row:1}
     #classifyPage>.sidebar{grid-column:1;grid-row:1;padding:14px}
     #classifyPage .sidebarProgress>.divider:first-child{display:none}
-    .classifyHeading{display:flex;align-items:center;gap:12px;flex:none;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-    .backToTree{width:40px;height:40px;flex:none;border:1px solid var(--line);border-radius:11px;background:var(--surface2);color:var(--cyan);font-size:24px}
+    .classifyHeading{display:flex;align-items:center;gap:9px;flex:none;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+    .backToTree{width:32px;height:32px;flex:none;border:1px solid var(--line);border-radius:11px;background:var(--surface2);color:var(--cyan);font-size:24px}
     .backToTree:hover{background:#254052;border-color:var(--cyan)}
     .classifyLocation{min-width:0}
-    #classifyFolder{font-size:12px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+    #classifyFolder{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
     @media(max-width:760px){
       #classifyPage{grid-template-columns:minmax(0,1fr)}
       #classifyPage>.main{grid-column:1;grid-row:1}
@@ -173,8 +173,6 @@
       <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
         <time class="status localTime" id="localTime" title="Heure locale">—</time>
         <button type="button" class="smallbtn" id="toggleLibrary" hidden aria-controls="libraryPanel" aria-expanded="true" aria-label="Masquer la bibliothèque">Bibliothèque</button>
-        <button type="button" class="smallbtn" id="enterFullscreen" disabled>Plein écran</button>
-        <button type="button" class="smallbtn" id="exitFullscreen" disabled>Quitter le plein écran</button>
       </div>
     </header>
     <section id="homePage" class="panel homePage" aria-label="Choisir un dossier">
@@ -256,8 +254,8 @@
       <main class="main">
         <section class="panel playerpanel">
           <div class="classifyHeading">
-            <button type="button" id="homeBack" class="backToTree" aria-label="Retour à l’arborescence" title="Retour à l’arborescence">←</button>
-            <div class="classifyLocation"><span class="overline">Classement</span><div id="classifyFolder"></div></div>
+            <button type="button" id="homeBack" class="backToTree" aria-label="Retour à l’arborescence" title="Retour à l’arborescence">↑</button>
+            <div class="classifyLocation" id="classifyFolder"></div>
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
@@ -274,10 +272,11 @@
             <button class="smallbtn" id="forward30Btn" title="Avancer de 30 secondes">+30 s</button>
             <span class="timer" id="clock">00:00 / 00:00</span>
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
-            <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
           </div>
-          <div class="secondaryactions">
-            <button class="button" id="undoBtn" disabled>↶ Annuler la dernière</button>
+          <div class="secondaryactions" role="group" aria-label="Classement de la vidéo">
+            <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
+
+            <button class="button" id="undoBtn" disabled>↶ Annuler</button>
             <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
             <button class="button" id="skipBtn" disabled>Passer →</button>
           </div>
@@ -304,31 +303,6 @@
   const fmtSize = (n) => { if(!Number.isFinite(n))return "—"; const u=["o","Kio","Mio","Gio","Tio"];let i=0;while(n>=1024&&i<4){n/=1024;i++}return `${n.toLocaleString("fr-FR",{maximumFractionDigits:i?1:0})} ${u[i]}`; };
   const fmtTime = (sec) => { sec=Math.max(0,Math.floor(sec||0));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; };
   function notice(text, timeout=4000){const el=$("toast");el.textContent=text;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",timeout)}
-  function setupFullscreen(){
-    const enter = $("enterFullscreen");
-    const exit = $("exitFullscreen");
-    const root = document.documentElement;
-    const sync = () => {
-      enter.disabled = !document.fullscreenEnabled || !!document.fullscreenElement;
-      exit.disabled = document.fullscreenElement !== root;
-    };
-    enter.onclick = async () => {
-      try {
-        await root.requestFullscreen();
-      } catch {
-        notice("Impossible de passer en plein écran.");
-      }
-    };
-    exit.onclick = async () => {
-      try {
-        await document.exitFullscreen();
-      } catch {
-        notice("Impossible de quitter le plein écran.");
-      }
-    };
-    document.addEventListener("fullscreenchange", sync);
-    sync();
-  }
   async function api(path, options={}) {
     const res=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
     if(!res.ok){let msg=`Erreur HTTP ${res.status}`;try{const j=await res.json();msg=j.detail||msg}catch{}throw new Error(msg)}
@@ -812,7 +786,6 @@
     time.dateTime = value;
     time.textContent = value;
   }
-  setupFullscreen();
   updateLocalClock();
   setInterval(updateLocalClock,1000);
   createPalette();health();
