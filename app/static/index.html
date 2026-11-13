@@ -35,6 +35,17 @@
     .folderFilters{display:flex;align-items:center;gap:5px}
     .folderFilters .smallbtn{flex:none;padding:6px 8px}
     .folderFilters .smallbtn[aria-pressed="true"]{color:var(--cyan);border-color:var(--cyan)}
+    .homePage{margin-top:16px;padding:20px;min-height:0;display:flex;flex-direction:column}
+    .homePage h2{margin:0 0 14px}
+    .homeToolbar{display:flex;gap:8px;flex-wrap:wrap}
+    .homeToolbar input{flex:1;min-width:180px;background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px}
+    .homeTree{overflow:auto;min-height:0;flex:1}
+    .homeBranch{margin-left:22px;border-left:1px solid var(--line);padding-left:8px}
+    .homeRow{display:flex;align-items:center;gap:8px;padding:5px 0}
+    .homeRow .treeExpand{flex:none;width:32px}
+    .homeRow .treeOpen{text-align:left;min-width:0;overflow-wrap:anywhere;flex:1;background:transparent}
+    .homeRow .treeCount{color:var(--cyan);white-space:nowrap;padding-right:10px}
+    @media(min-width:761px) and (max-height:950px){.homePage{flex:1}}
     .folderParent{display:block;color:var(--muted);font-size:11px;margin-top:3px}
     .folder[aria-current="location"]{background:var(--surface2);box-shadow:inset 3px 0 var(--cyan)}
     .folder.pendingFolder .folderName{white-space:normal;overflow-wrap:anywhere}
@@ -120,12 +131,24 @@
       </div>
       <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
         <time class="status localTime" id="localTime" title="Heure locale">—</time>
-        <button type="button" class="smallbtn" id="toggleLibrary" aria-controls="libraryPanel" aria-expanded="true" aria-label="Masquer la bibliothèque">Bibliothèque</button>
+        <button type="button" class="smallbtn" id="homeBack" hidden>← Arborescence</button>
+        <button type="button" class="smallbtn" id="toggleLibrary" hidden aria-controls="libraryPanel" aria-expanded="true" aria-label="Masquer la bibliothèque">Bibliothèque</button>
         <button type="button" class="smallbtn" id="enterFullscreen" disabled>Plein écran</button>
         <button type="button" class="smallbtn" id="exitFullscreen" disabled>Quitter le plein écran</button>
       </div>
     </header>
-    <div class="layout">
+    <section id="homePage" class="panel homePage" aria-label="Choisir un dossier">
+      <h2>Bibliothèque</h2>
+      <form id="homeRootForm" class="homeToolbar">
+        <input id="homeRootInput" aria-label="Répertoire de départ" placeholder="Chemin du répertoire">
+        <button class="button" type="submit">Ouvrir l’arborescence</button>
+        <button class="button primary" id="homeCalculate" type="button">Calculer et masquer les dossiers inutiles</button>
+        <button class="button" id="homeShowAll" type="button" hidden>Tout afficher</button>
+      </form>
+      <p id="homeStatus" class="tiny muted" role="status"></p>
+      <div id="homeTree" class="homeTree"></div>
+    </section>
+    <div class="layout" id="classifyPage" hidden>
       <aside class="panel sidebar" id="libraryPanel" aria-label="Bibliothèque">
         <div class="sidebarBrowse">
           <div class="directoryBar">
@@ -566,6 +589,9 @@
     pollBusy=true;
     try{
       const s=await api("/api/sessions/"+qs(sessionId));state=s;
+      if(homeInventory && !s.recursive && s.status==="ready"){
+        homeInventory.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
+      }
       if(pendingOnly && pendingCounts && !s.recursive && s.status==="ready" &&
          Object.hasOwn(pendingCounts.counts,s.directory)){
         const remaining = Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
@@ -735,7 +761,138 @@
   setupFullscreen();
   updateLocalClock();
   setInterval(updateLocalClock,1000);
-  createPalette();restoreDirectory();health();
+  createPalette();health();
+  let homeRoot = "", homeInventory = null, homeFiltered = false, homeRevision = 0;
+  const homeOpenBranches = new Set();
+  function homeCount(path){
+    if(!homeInventory)return null;
+    const prefix = path ? path + "/" : "";
+    return Object.entries(homeInventory.counts).reduce((sum,[key,count]) =>
+      sum + (key===(path||".") || key.startsWith(prefix) ? count : 0),0);
+  }
+  async function openClassification(path){
+    if(browsing || openingFolder)return;
+    $("homePage").hidden=true;
+    $("classifyPage").hidden=false;
+    $("homeBack").hidden=false;
+    $("toggleLibrary").hidden=false;
+    pendingOnly=false;
+    pendingCounts=null;
+    folderCountRequest++;
+    $("pendingFolders").setAttribute("aria-pressed","false");
+    $("refreshFolderIndex").hidden=true;
+    $("nextFolder").hidden=true;
+    await openPendingFolder(path);
+  }
+  async function renderHomeBranch(path, container, revision){
+    const data=await api("/api/tree?directory="+qs(path));
+    if(revision!==homeRevision)return;
+    container.replaceChildren();
+    const folders=[{name:data.root_name,path:data.path==="."?"":data.path,root:true},...data.directories];
+    for(const folder of folders){
+      const count=homeCount(folder.path);
+      if(homeFiltered && count===0)continue;
+      const row=document.createElement("div");row.className="homeRow";
+      const expand=document.createElement("button");expand.type="button";expand.className="smallbtn treeExpand";
+      expand.textContent=folder.root?"·":"▸";
+      expand.disabled=!!folder.root;
+      expand.setAttribute("aria-label","Déplier "+folder.name);
+      expand.setAttribute("aria-expanded","false");
+      const open=document.createElement("button");open.type="button";open.className="button treeOpen";
+      open.textContent=folder.root ? (path.split("/").pop()||data.root_name)+" (ce dossier)" : folder.name;
+      open.title="Classer les vidéos de ce dossier";
+      open.onclick=()=>openClassification(folder.path);
+      row.append(expand,open);
+      if(count!==null){
+        const badge=document.createElement("span");badge.className="treeCount";
+        badge.textContent=count+" vidéo"+(count>1?"s":"");
+        badge.title="Vidéos à traiter dans cette branche";
+        row.append(badge);
+      }
+      container.append(row);
+      if(folder.root)continue;
+      const branch=document.createElement("div");branch.className="homeBranch";branch.hidden=true;
+      container.append(branch);
+      async function toggle(){
+        if(!branch.hidden){
+          branch.hidden=true;expand.textContent="▸";expand.setAttribute("aria-expanded","false");
+          homeOpenBranches.delete(folder.path);return;
+        }
+        expand.disabled=true;
+        try{
+          await renderHomeBranch(folder.path,branch,revision);
+          if(revision!==homeRevision)return;
+          branch.hidden=false;expand.textContent="▾";expand.setAttribute("aria-expanded","true");
+          homeOpenBranches.add(folder.path);
+        }catch(error){notice(error.message)}finally{expand.disabled=false}
+      }
+      expand.onclick=toggle;
+      if(homeOpenBranches.has(folder.path))await toggle();
+    }
+    if(!container.children.length)container.textContent="Aucune vidéo à traiter dans cette branche.";
+  }
+  async function loadHomeRoot(path){
+    const revision=++homeRevision;
+    try{
+      const data=await api("/api/tree?directory="+qs(path));
+      if(revision!==homeRevision)return;
+      homeRoot=data.path==="."?"":data.path;
+      $("homeRootInput").value=data.display_path;
+      homeInventory=null;homeFiltered=false;homeOpenBranches.clear();
+      $("homeShowAll").hidden=true;
+      $("homeStatus").textContent="Déplie les branches avec ▸, puis clique sur un dossier pour classer ses vidéos.";
+      await renderHomeBranch(homeRoot,$("homeTree"),revision);
+      try{localStorage.setItem("2n-color.home-root",data.display_path)}catch{}
+    }catch(error){notice(error.message)}
+  }
+  $("homeRootForm").onsubmit=event=>{event.preventDefault();loadHomeRoot($("homeRootInput").value.trim())};
+  $("homeCalculate").onclick=async()=>{
+    const revision=homeRevision;
+    $("homeCalculate").disabled=true;
+    let id;
+    try{
+      $("homeStatus").textContent="Inventaire des vidéos…";
+      ({id}=await api("/api/folder-counts",{method:"POST",body:JSON.stringify({directory:homeRoot})}));
+      while(revision===homeRevision){
+        const result=await api("/api/folder-counts/"+qs(id));
+        if(revision!==homeRevision)return;
+        if(result.status==="error")throw new Error(result.error);
+        if(result.status==="ready"){
+          homeInventory=result;homeFiltered=true;
+          $("homeShowAll").hidden=false;
+          const errors=Object.values(result.unreadable).reduce((a,b)=>a+b,0);
+          $("homeStatus").textContent="Dossiers contenant des vidéos à traiter"+(errors ? " · "+errors+" pastille(s) illisible(s), exclues du comptage." : ".");
+          await renderHomeBranch(homeRoot,$("homeTree"),revision);
+          break;
+        }
+        $("homeStatus").textContent="Lecture Finder · "+result.done+" / "+result.total;
+        await new Promise(resolve=>setTimeout(resolve,650));
+      }
+    }catch(error){if(revision===homeRevision)$("homeStatus").textContent=error.message}
+    finally{
+      $("homeCalculate").disabled=false;
+      if(id)api("/api/folder-counts/"+qs(id),{method:"DELETE"}).catch(()=>{});
+    }
+  };
+  $("homeShowAll").onclick=()=>{
+    homeFiltered=false;
+    $("homeShowAll").hidden=true;
+    renderHomeBranch(homeRoot,$("homeTree"),homeRevision).catch(error=>notice(error.message));
+  };
+  $("homeBack").onclick=async()=>{
+    video.pause();
+    $("classifyPage").hidden=true;
+    $("homePage").hidden=false;
+    $("homeBack").hidden=true;
+    $("toggleLibrary").hidden=true;
+    const scroll=$("homeTree").scrollTop;
+    await renderHomeBranch(homeRoot,$("homeTree"),homeRevision).catch(error=>notice(error.message));
+    $("homeTree").scrollTop=scroll;
+  };
+  let savedHome="";
+  try{savedHome=localStorage.getItem("2n-color.home-root")||localStorage.getItem(lastDirectoryKey)||""}catch{}
+  loadHomeRoot(savedHome);
+
   setInterval(health,4000);setInterval(poll,700);
 })();
 </script>
