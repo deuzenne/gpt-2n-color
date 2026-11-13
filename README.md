@@ -71,6 +71,11 @@ Sur un écran plus étroit, la palette passe à la ligne.
 La liste des dossiers est défilante indépendamment du classement. Les
 petits écrans mobiles gardent une présentation empilée.
 
+Le filtre **À traiter** de la bibliothèque affiche les sous-dossiers qui
+contiennent des vidéos sans pastille Finder et indique leur nombre. Le total
+inclut leurs descendants si **Inclure les sous-dossiers** est coché.
+Un compteur marqué `+` ou `?` indique des pastilles illisibles.
+
 ## Parcours
 
 - Choisir un dossier de `MEDIA_ROOT` et l'option sous-dossiers.
@@ -97,4 +102,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.9+build.0010`.
+Version : `0.1.10+build.0011`.

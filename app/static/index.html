@@ -32,6 +32,10 @@
     #goToFolder[open]{flex:1}
     #goToFolder .pathentry{margin-top:6px}
     .folderFilter{width:100%;min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--text)}
+    .folderFilters{display:flex;align-items:center;gap:5px}
+    .folderFilters .smallbtn{flex:none;padding:6px 8px}
+    .folderFilters .smallbtn[aria-pressed="true"]{color:var(--cyan);border-color:var(--cyan)}
+    .folderCount{margin-left:auto;color:var(--cyan);white-space:nowrap;font-variant-numeric:tabular-nums}
     .quickFolderList{max-height:76px;overflow:auto}
     .quickFolderList .folder{padding:5px 7px}
     .folderName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -143,7 +147,11 @@
             <div class="tiny muted">Récents</div>
             <div id="recentFolders" class="quickFolderList"></div>
           </details>
-          <input type="search" id="folderFilter" class="folderFilter" aria-label="Filtrer les sous-dossiers" placeholder="Filtrer les sous-dossiers">
+          <div class="folderFilters">
+            <input type="search" id="folderFilter" class="folderFilter" aria-label="Filtrer les sous-dossiers" placeholder="Filtrer par nom">
+            <button type="button" id="pendingFolders" class="smallbtn" aria-pressed="false" title="Afficher les dossiers contenant des vidéos sans pastille Finder">À traiter</button>
+          </div>
+          <div id="folderCountStatus" class="tiny muted" role="status" hidden></div>
           <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
           <div id="folderSummary" class="folderSummary">Aucun dossier sélectionné.</div>
         </div>
@@ -287,12 +295,63 @@
     row.onclick = () => browse(path);
     return row;
   }
+  let pendingOnly = false, pendingCounts = null, folderCountRequest = 0;
+  async function refreshFolderCounts(){
+    const request = ++folderCountRequest;
+    const status = $("folderCountStatus");
+    pendingCounts = null;
+    renderSubfolders();
+    status.hidden = !pendingOnly;
+    if(!pendingOnly)return;
+    status.textContent = "Comptage des vidéos sans pastille…";
+    let id;
+    try {
+      ({id} = await api("/api/folder-counts", {method:"POST", body:JSON.stringify({
+        directory, recursive:$("recursive").checked,
+      })}));
+      while(request===folderCountRequest){
+        const result = await api("/api/folder-counts/"+qs(id));
+        if(request!==folderCountRequest)return;
+        if(result.status==="error")throw new Error(result.error);
+        if(result.status==="ready"){
+          pendingCounts = result;
+          renderSubfolders();
+          const unreadable = Object.values(result.unreadable).reduce((sum,count)=>sum+count,0);
+          status.hidden = !unreadable;
+          status.textContent = unreadable ? `${unreadable} pastille(s) Finder illisible(s).` : "";
+          return;
+        }
+        status.textContent = `Lecture Finder · ${result.done} / ${result.total}`;
+        await new Promise(resolve=>setTimeout(resolve,650));
+      }
+    } catch(err){
+      if(request===folderCountRequest) status.textContent = err.message;
+    } finally {
+      if(id)api("/api/folder-counts/"+qs(id),{method:"DELETE"}).catch(()=>{});
+    }
+  }
   function renderSubfolders(){
     const term = $("folderFilter").value.trim().toLocaleLowerCase("fr");
-    const shown = subfolders.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term));
+    const counts = pendingCounts?.counts;
+    const unreadable = pendingCounts?.unreadable;
+    const shown = subfolders.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term)
+      && (!counts || counts[folder.path] > 0 || unreadable[folder.path] > 0));
     const list = $("folders");
-    list.replaceChildren(...shown.map(folder => folderButton(folder.name, folder.path, folder)));
-    if(!shown.length) list.textContent = term ? "Aucun résultat." : "Aucun sous-dossier.";
+    list.replaceChildren(...shown.map(folder => {
+      const row = folderButton(folder.name, folder.path, folder);
+      if(counts){
+        const badge = document.createElement("span");
+        const count = counts[folder.path];
+        badge.className = "folderCount";
+        badge.textContent = unreadable[folder.path] ? (count ? `${count}+` : "?") : String(count);
+        badge.title = unreadable[folder.path] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) à traiter`;
+        badge.setAttribute("aria-label",badge.title);
+        row.insertBefore(badge,row.lastElementChild);
+      }
+      return row;
+    }));
+    if(!shown.length) list.textContent = term ? "Aucun résultat." :
+      counts ? "Aucun sous-dossier avec des vidéos à traiter." : "Aucun sous-dossier.";
   }
   function renderQuickFolders(){
     const starred = favorites.includes(currentFolderPath);
@@ -314,11 +373,12 @@
       }
     }
   }
-  async function browse(path=""){
+  async function browse(path="", {refreshCounts=true}={}){
     if(browsing)return false;
     browsing=true;
     try {
       const d=await api("/api/tree?directory="+qs(path));
+      const previousDirectory = directory;
       directory=d.path==="."?"":d.path;
       currentFolderPath=d.display_path;
       $("dirInput").value=currentFolderPath;
@@ -338,7 +398,8 @@
       $("rootBtn").disabled=!directory;
       $("folderFilter").value="";
       subfolders=d.directories;
-      renderSubfolders();
+      if(refreshCounts || directory!==previousDirectory)refreshFolderCounts();
+      else renderSubfolders();
       recent=[currentFolderPath,...recent.filter(item=>item!==currentFolderPath)].slice(0,5);
       saveFolders(folderStorageKeys.recent,recent);
       renderQuickFolders();
@@ -418,7 +479,7 @@
     try{
       $("scanBtn").disabled=true;
       const selected=$("goToFolder").open ? $("dirInput").value.trim() : currentFolderPath;
-      if(!(await browse(selected)))return;
+      if(!(await browse(selected,{refreshCounts:false})))return;
       sessionId=null;state=null;activePath=null;stopVideo();
       setProgress(0);
       updateScanButton();
@@ -518,7 +579,15 @@
   $("forwardBtn").onclick=()=>seekTo(position()+10);
   $("forward30Btn").onclick=()=>seekTo(position()+30);
   $("speedBtn").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:1;video.playbackRate=speed;$("speedBtn").textContent="×"+speed};
-  $("recursive").addEventListener("change",updateScanButton);
+  $("recursive").addEventListener("change",()=>{
+    updateScanButton();
+    if(pendingOnly)refreshFolderCounts();
+  });
+  $("pendingFolders").onclick=()=>{
+    pendingOnly=!pendingOnly;
+    $("pendingFolders").setAttribute("aria-pressed",String(pendingOnly));
+    refreshFolderCounts();
+  };
   $("scanBtn").onclick=scan;$("rootBtn").onclick=()=>browse("");
   $("parentBtn").onclick=()=>browse(directory.split("/").slice(0,-1).join("/"));
   $("folderFilter").addEventListener("input",renderSubfolders);
