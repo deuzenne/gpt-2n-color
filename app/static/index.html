@@ -35,6 +35,8 @@
     .folderFilters{display:flex;align-items:center;gap:5px}
     .folderFilters .smallbtn{flex:none;padding:6px 8px}
     .folderFilters .smallbtn[aria-pressed="true"]{color:var(--cyan);border-color:var(--cyan)}
+    .folderParent{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+    .folder[aria-current="location"]{background:var(--surface2);box-shadow:inset 3px 0 var(--cyan)}
     .folder.pendingFolder .folderName{white-space:normal;overflow-wrap:anywhere}
     .folderCount{margin-left:auto;color:var(--cyan);white-space:nowrap;font-variant-numeric:tabular-nums}
     .quickFolderList{max-height:76px;overflow:auto}
@@ -153,10 +155,13 @@
             <button type="button" id="pendingFolders" class="smallbtn" aria-pressed="false" title="Trouver les dossiers avec des vidéos sans pastille dans toute la branche">À traiter</button>
           </div>
           <div id="folderCountStatus" class="tiny muted" role="status" hidden></div>
+          <div id="pendingScope" class="tiny muted" hidden></div>
           <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
+          <details id="completedGroup" hidden><summary>Terminés</summary><div id="completedFolders" class="quickFolderList"></div></details>
           <div id="folderSummary" class="folderSummary">Aucun dossier sélectionné.</div>
         </div>
         <div class="scanControls">
+          <button type="button" id="nextFolder" class="button primary wide" hidden>Dossier suivant →</button>
           <label class="checkline"><input type="checkbox" id="recursive" checked> Inclure les sous-dossiers</label>
           <button class="button primary wide" id="scanBtn">◉ Analyser les vidéos sans couleur</button>
         </div>
@@ -296,10 +301,12 @@
     row.onclick = () => browse(path);
     return row;
   }
+  let pendingRoot = "", openingFolder = false;
   let pendingOnly = false, pendingCounts = null, folderCountRequest = 0;
   async function refreshFolderCounts(){
     const request = ++folderCountRequest;
     const status = $("folderCountStatus");
+    pendingRoot = directory;
     pendingCounts = null;
     renderSubfolders();
     status.hidden = !pendingOnly;
@@ -341,20 +348,29 @@
     const counts = pendingCounts?.counts;
     const unreadable = pendingCounts?.unreadable;
     const candidates = counts ? Object.entries(counts)
-      .filter(([,count]) => count > 0)
       .map(([path]) => ({
         path: path === "." ? "" : path,
         countPath: path,
-        name: path === (directory || ".") ? "Dossier courant" :
-          (directory ? path.slice(directory.length + 1) : path).split("/").join(" / "),
+        name: path === (pendingRoot || ".") ? "Dossier courant" :
+          (pendingRoot ? path.slice(pendingRoot.length + 1) : path).split("/").join(" / "),
       }))
       .sort((a,b) => (a.path === directory ? -1 : b.path === directory ? 1 :
         a.name.localeCompare(b.name,"fr",{numeric:true}))) : subfolders;
     const shown = candidates.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term));
-    list.replaceChildren(...shown.map(folder => {
+    const completed = $("completedFolders");
+    completed.replaceChildren();
+    list.replaceChildren(...shown.filter(folder => !counts || counts[folder.countPath] > 0).map(folder => {
       const row = folderButton(folder.name, folder.path, folder);
       if(counts){
         row.className += " pendingFolder";
+        row.setAttribute("aria-current", folder.path === directory ? "location" : "false");
+        const title = row.querySelector(".folderName");
+        title.textContent = folder.path.split("/").pop() || "Bibliothèque";
+        const parent = document.createElement("small");
+        parent.className = "folderParent";
+        parent.textContent = folder.name;
+        title.append(parent);
+        row.onclick = () => openPendingFolder(folder.path);
         const badge = document.createElement("span");
         const count = counts[folder.countPath];
         badge.className = "folderCount";
@@ -365,7 +381,17 @@
       }
       return row;
     }));
-    if(!shown.length) list.textContent = term ? "Aucun résultat." :
+    if(counts){
+      for(const folder of shown.filter(folder => counts[folder.countPath] === 0)){
+        const row = folderButton(folder.name, folder.path);
+        row.onclick = () => openPendingFolder(folder.path);
+        completed.append(row);
+      }
+    }
+    $("completedGroup").hidden = !counts || completed.children.length === 0;
+    $("pendingScope").hidden = !counts;
+    $("pendingScope").textContent = "Dans " + (pendingRoot || "la bibliothèque");
+    if(!list.children.length) list.textContent = term ? "Aucun résultat." :
       counts ? "Aucun dossier avec des vidéos à traiter." : "Aucun sous-dossier.";
   }
   function renderQuickFolders(){
@@ -388,7 +414,7 @@
       }
     }
   }
-  async function browse(path="", {refreshCounts=true}={}){
+  async function browse(path="", {refreshCounts=true, keepPending=false}={}){
     if(browsing)return false;
     browsing=true;
     try {
@@ -413,7 +439,7 @@
       $("rootBtn").disabled=!directory;
       $("folderFilter").value="";
       subfolders=d.directories;
-      if(refreshCounts || directory!==previousDirectory)refreshFolderCounts();
+      if(!keepPending && (refreshCounts || directory!==previousDirectory))refreshFolderCounts();
       else renderSubfolders();
       recent=[currentFolderPath,...recent.filter(item=>item!==currentFolderPath)].slice(0,5);
       saveFolders(folderStorageKeys.recent,recent);
@@ -490,15 +516,23 @@
     bar.parentElement.setAttribute("aria-valuenow", percent);
     $("progressPercent").textContent = percent + " %";
   }
-  async function scan(){
+  async function openPendingFolder(path){
+    if(openingFolder || browsing || state?.busy)return;
+    openingFolder = true;
+    try {
+      if(await browse(path,{refreshCounts:false,keepPending:true})) await scan(true);
+    } finally { openingFolder = false; }
+  }
+  async function scan(direct=false){
+    direct = direct === true;
     try{
       $("scanBtn").disabled=true;
       const selected=$("goToFolder").open ? $("dirInput").value.trim() : currentFolderPath;
-      if(!(await browse(selected,{refreshCounts:false})))return;
+      if(!direct && !(await browse(selected,{refreshCounts:false})))return;
       sessionId=null;state=null;activePath=null;stopVideo();
       setProgress(0);
       updateScanButton();
-      const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:$("recursive").checked})});
+      const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:direct ? false : $("recursive").checked})});
       sessionId=s.id;await poll();
     }catch(err){notice(err.message,6500)}
     finally{$("scanBtn").disabled=false}
@@ -508,6 +542,14 @@
     pollBusy=true;
     try{
       const s=await api("/api/sessions/"+qs(sessionId));state=s;
+      if(pendingOnly && pendingCounts && !s.recursive && s.status==="ready" &&
+         Object.hasOwn(pendingCounts.counts,s.directory)){
+        pendingCounts.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
+        renderSubfolders();
+      }
+      $("nextFolder").hidden = !(pendingOnly && pendingCounts && s.status==="ready" && s.queue_size===0);
+      $("nextFolder").disabled = !pendingCounts || !Object.entries(pendingCounts.counts)
+        .some(([path,count])=>count>0 && path!==(directory||"."));
       $("statRemaining").textContent=s.status==="scanning"?"…":s.queue_size;
       $("statDone").textContent=s.reviewed;
       $("statVolume").textContent=fmtSize(s.remaining_bytes);
@@ -597,9 +639,16 @@
   $("recursive").addEventListener("change",()=>{
     updateScanButton();
   });
+  $("nextFolder").onclick=()=>{
+    const next=Object.entries(pendingCounts?.counts || {})
+      .filter(([path,count])=>count>0 && path!==(directory||"."))
+      .sort(([a],[b])=>a.localeCompare(b,"fr",{numeric:true}))[0];
+    if(next)openPendingFolder(next[0]==="."?"":next[0]);
+  };
   $("pendingFolders").onclick=()=>{
     pendingOnly=!pendingOnly;
     $("pendingFolders").setAttribute("aria-pressed",String(pendingOnly));
+    $("nextFolder").hidden=true;
     refreshFolderCounts();
   };
   $("scanBtn").onclick=scan;$("rootBtn").onclick=()=>browse("");
