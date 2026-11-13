@@ -155,6 +155,7 @@
             <button type="button" id="pendingFolders" class="smallbtn" aria-pressed="false" title="Trouver les dossiers avec des vidéos sans pastille dans toute la branche">À traiter</button>
           </div>
           <div id="folderCountStatus" class="tiny muted" role="status" hidden></div>
+          <button type="button" id="refreshFolderIndex" class="smallbtn" hidden>Actualiser l’index</button>
           <div id="pendingScope" class="tiny muted" hidden></div>
           <div class="folders" id="folders"><div class="muted tiny">Chargement des dossiers…</div></div>
           <details id="completedGroup" hidden><summary>Terminés</summary><div id="completedFolders" class="quickFolderList"></div></details>
@@ -303,10 +304,31 @@
   }
   let pendingRoot = "", openingFolder = false;
   let pendingOnly = false, pendingCounts = null, folderCountRequest = 0;
-  async function refreshFolderCounts(){
+  const folderContexts = new Map();
+  function saveFolderContext(){
+    if(!pendingOnly || !pendingCounts)return;
+    folderContexts.set(pendingRoot, {
+      result: pendingCounts,
+      filter: $("folderFilter").value,
+      scroll: $("folders").scrollTop,
+      completedOpen: $("completedGroup").open,
+    });
+  }
+  async function refreshFolderCounts(force=false){
     const request = ++folderCountRequest;
     const status = $("folderCountStatus");
     pendingRoot = directory;
+    const saved = folderContexts.get(pendingRoot);
+    if(pendingOnly && saved && !force){
+      pendingCounts = saved.result;
+      $("folderFilter").value = saved.filter;
+      $("completedGroup").open = saved.completedOpen;
+      status.hidden = false;
+      status.textContent = "Index mémorisé · Actualiser pour relire Finder";
+      renderSubfolders();
+      $("folders").scrollTop = saved.scroll;
+      return;
+    }
     pendingCounts = null;
     renderSubfolders();
     status.hidden = !pendingOnly;
@@ -323,6 +345,7 @@
         if(result.status==="error")throw new Error(result.error);
         if(result.status==="ready"){
           pendingCounts = result;
+          saveFolderContext();
           renderSubfolders();
           const unreadable = Object.values(result.unreadable).reduce((sum,count)=>sum+count,0);
           status.hidden = !unreadable;
@@ -419,6 +442,7 @@
     browsing=true;
     try {
       const d=await api("/api/tree?directory="+qs(path));
+      saveFolderContext();
       const previousDirectory = directory;
       directory=d.path==="."?"":d.path;
       currentFolderPath=d.display_path;
@@ -544,7 +568,13 @@
       const s=await api("/api/sessions/"+qs(sessionId));state=s;
       if(pendingOnly && pendingCounts && !s.recursive && s.status==="ready" &&
          Object.hasOwn(pendingCounts.counts,s.directory)){
-        pendingCounts.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
+        const remaining = Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
+        pendingCounts.counts[s.directory] = remaining;
+        for(const context of folderContexts.values()){
+          if(Object.hasOwn(context.result.counts,s.directory)){
+            context.result.counts[s.directory] = remaining;
+          }
+        }
         renderSubfolders();
       }
       $("nextFolder").hidden = !(pendingOnly && pendingCounts && s.status==="ready" && s.queue_size===0);
@@ -639,6 +669,7 @@
   $("recursive").addEventListener("change",()=>{
     updateScanButton();
   });
+  $("refreshFolderIndex").onclick=()=>refreshFolderCounts(true);
   $("nextFolder").onclick=()=>{
     const next=Object.entries(pendingCounts?.counts || {})
       .filter(([path,count])=>count>0 && path!==(directory||"."))
@@ -646,8 +677,10 @@
     if(next)openPendingFolder(next[0]==="."?"":next[0]);
   };
   $("pendingFolders").onclick=()=>{
+    saveFolderContext();
     pendingOnly=!pendingOnly;
     $("pendingFolders").setAttribute("aria-pressed",String(pendingOnly));
+    $("refreshFolderIndex").hidden=!pendingOnly;
     $("nextFolder").hidden=true;
     refreshFolderCounts();
   };

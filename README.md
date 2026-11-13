@@ -103,9 +103,13 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.13+build.0014`.
+Version : `0.1.14+build.0015`.
 
 En mode **À traiter**, un clic sur un dossier lance le classement de ses vidéos directes.
 La liste reste ancrée sur le dossier de départ. Les compteurs sont mis à jour après
 classement, les dossiers à zéro passent dans **Terminés**, et **Dossier suivant**
 permet de continuer après la dernière vidéo. Les vidéos passées sans couleur restent à traiter.
+
+Les index À traiter sont mémorisés pendant la navigation dans l’onglet ouvert.
+Le retour à un dossier restaure ses compteurs, son filtre et sa position dans la liste.
+**Actualiser l’index** relit Finder après des modifications externes.
