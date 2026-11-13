@@ -318,7 +318,7 @@
           renderSubfolders();
           const unreadable = Object.values(result.unreadable).reduce((sum,count)=>sum+count,0);
           status.hidden = !unreadable;
-          status.textContent = unreadable ? `${unreadable} pastille(s) Finder illisible(s).` : "";
+          status.textContent = unreadable ? `${unreadable} pastille(s) Finder illisible(s), hors comptage.` : "";
           return;
         }
         status.textContent = `Lecture Finder · ${result.done} / ${result.total}`;
@@ -332,18 +332,22 @@
   }
   function renderSubfolders(){
     const term = $("folderFilter").value.trim().toLocaleLowerCase("fr");
+    const list = $("folders");
+    if(pendingOnly && !pendingCounts){
+      list.replaceChildren();
+      return;
+    }
     const counts = pendingCounts?.counts;
     const unreadable = pendingCounts?.unreadable;
     const shown = subfolders.filter(folder => folder.name.toLocaleLowerCase("fr").includes(term)
-      && (!counts || counts[folder.path] > 0 || unreadable[folder.path] > 0));
-    const list = $("folders");
+      && (!pendingOnly || counts[folder.path] > 0));
     list.replaceChildren(...shown.map(folder => {
       const row = folderButton(folder.name, folder.path, folder);
       if(counts){
         const badge = document.createElement("span");
         const count = counts[folder.path];
         badge.className = "folderCount";
-        badge.textContent = unreadable[folder.path] ? (count ? `${count}+` : "?") : String(count);
+        badge.textContent = unreadable[folder.path] ? `${count}+` : String(count);
         badge.title = unreadable[folder.path] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) à traiter`;
         badge.setAttribute("aria-label",badge.title);
         row.insertBefore(badge,row.lastElementChild);

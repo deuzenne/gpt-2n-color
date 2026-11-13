@@ -74,7 +74,8 @@ petits écrans mobiles gardent une présentation empilée.
 Le filtre **À traiter** de la bibliothèque affiche les sous-dossiers qui
 contiennent des vidéos sans pastille Finder et indique leur nombre. Le total
 inclut leurs descendants si **Inclure les sous-dossiers** est coché.
-Un compteur marqué `+` ou `?` indique des pastilles illisibles.
+Seuls les dossiers avec au moins une vidéo sans pastille confirmée sont affichés.
+Un compteur marqué `+` signale un total partiel à cause de pastilles illisibles.
 
 ## Parcours
 
@@ -102,4 +103,4 @@ python3 -m compileall -q app mac_agent.py
 docker compose config
 ```
 
-Version : `0.1.10+build.0011`.
+Version : `0.1.11+build.0012`.
