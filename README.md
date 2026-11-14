@@ -2,6 +2,8 @@
 
 Application de classement Finder : web dans **Docker / Colima**, avec **agent macOS natif** pour lire et écrire les pastilles Finder.
 
+[FAQ de dépannage](FAQ.md)
+
 ## Installer
 
 Prérequis : Colima + Docker Compose, Python 3.11+ sur le Mac.
