@@ -213,7 +213,8 @@ def tree(directory: str = ""):
 @app.post("/api/folder-counts")
 def start_folder_counts(req: SessionRequest):
     folder = select_directory(req.directory)
-    files = [video["path"] for video in enumerate_videos(folder, recursive=True)]
+    videos = enumerate_videos(folder, recursive=True)
+    files = [video["path"] for video in videos]
     if len(files) > 25000:
         raise HTTPException(413, "Plus de 25 000 vidéos : choisir un sous-dossier")
     sid = secrets.token_urlsafe(12)
@@ -228,10 +229,13 @@ def start_folder_counts(req: SessionRequest):
         if len(folder_scans) >= 12:
             raise HTTPException(429, "Trop de comptages en cours. Réessaie dans un instant.")
         scan = {"status": "scanning" if files else "ready", "counts": {},
-                "unreadable": {}, "updated": now, "total": len(files), "done": 0}
+                "uncolored_bytes": {}, "unreadable": {}, "updated": now, "total": len(files), "done": 0}
         folder_scans[sid] = scan
         if files:
-            scan["job_id"] = create_job("scan", sid, files=files, folder_count=True)
+            scan["job_id"] = create_job(
+                "scan", sid, files=files, folder_count=True,
+                sizes=[video["bytes"] for video in videos],
+            )
     return {"id": sid}
 
 
@@ -290,6 +294,9 @@ def start_session(req: SessionRequest):
 def view(session: dict) -> dict:
     pending = session["pending"]
     reviewed = len(session["history"])
+    remaining_bytes = sum(item["bytes"] for item in pending)
+    skipped_bytes = sum(entry["item"]["bytes"] for entry in session["history"]
+                        if entry["kind"] != "color")
     return {"id": session["id"], "directory": session["directory"],
             "recursive": session["recursive"],
             "status": session["status"], "total_files": session["total_files"],
@@ -297,7 +304,8 @@ def view(session: dict) -> dict:
             "scan_errors": session["scan_errors"],
             "colored_count": session.get("colored_count", 0),
             "queue_size": len(pending),
-            "remaining_bytes": sum(x["bytes"] for x in pending),
+            "remaining_bytes": remaining_bytes,
+            "uncolored_bytes": remaining_bytes + skipped_bytes,
             "classified": session["tagged"], "skipped": session["skipped"],
             "none": session["none"], "reviewed": reviewed,
             "current": pending[0] if pending else None, "busy": session["busy"],
@@ -382,7 +390,7 @@ def agent_next(x_agent_token: str | None = Header(default=None)):
                 continue
             job["status"] = "running"
             return {key: value for key, value in job.items()
-                    if key not in {"created", "status"}}
+                    if key not in {"created", "status", "sizes"}}
     return {"job": None}
 
 
@@ -423,10 +431,12 @@ def agent_result(data: AgentResult, x_agent_token: str | None = Header(default=N
             if scan:
                 scan["updated"] = time.time()
                 if data.ok and data.colors is not None and len(data.colors) == len(job["files"]):
-                    for path, color in zip(job["files"], data.colors):
+                    for path, size, color in zip(job["files"], job["sizes"], data.colors):
                         child = str(PurePosixPath(path).parent)
                         if color == 0:
                             scan["counts"][child] = scan["counts"].get(child, 0) + 1
+                            totals = scan["uncolored_bytes"]
+                            totals[child] = totals.get(child, 0) + size
                         elif color is None:
                             scan["unreadable"][child] = scan["unreadable"].get(child, 0) + 1
                     scan["done"] = len(job["files"])

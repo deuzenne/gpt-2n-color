@@ -90,7 +90,7 @@ pastilles illisibles en plus des vidéos sans pastille confirmées.
 
 ## Sécurité
 
-**Aucune suppression, aucun renommage, aucun réencodage permanent.** Les labels Finder ne sont pas appliqués depuis Linux : `mac_agent.py` tourne sur macOS, interroge en sortant l'API Colima sur `127.0.0.1` (pas de port natif ouvert) et exécute une seule commande AppleScript par action. En cas d'erreur Finder, aucune tentative automatique : l'interface reste sur la vidéo et permet de réessayer.
+**Aucune suppression, aucun renommage, aucun réencodage permanent.** Les labels Finder ne sont pas appliqués depuis Linux : `mac_agent.py` tourne sur macOS, interroge en sortant l'API Colima sur `127.0.0.1` (pas de port natif ouvert) et lit les attributs étendus des tags Finder avec le lecteur natif repris de `2n_media_convert`. L’écriture d’une pastille reste une commande AppleScript vérifiée. En cas d'erreur Finder, aucune tentative automatique : l'interface reste sur la vidéo et permet de réessayer.
 
 La bibliothèque est montée `:ro` ; les chemins sont validés et confinés à `MEDIA_ROOT` ; l'API agent exige un secret (`AGENT_TOKEN`). Le serveur n'écoute que sur le loopback du Mac. Les sessions résident en mémoire, mais les couleurs Finder survivent aux redémarrages.
 

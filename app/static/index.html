@@ -450,8 +450,9 @@
         const badge = document.createElement("span");
         const count = counts[folder.countPath];
         badge.className = "folderCount";
-        badge.textContent = unreadable[folder.countPath] ? `${count}+` : String(count);
-        badge.title = unreadable[folder.countPath] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) à traiter`;
+        const size = fmtMegabytes(pendingCounts.uncolored_bytes[folder.countPath]);
+        badge.textContent = (unreadable[folder.countPath] ? `${count}+` : String(count)) + " · " + size;
+        badge.title = unreadable[folder.countPath] ? "Comptage incomplet : pastilles Finder illisibles" : `${count} vidéo(s) sans pastille, ${size}`;
         badge.setAttribute("aria-label",badge.title);
         row.insertBefore(badge,row.lastElementChild);
       }
@@ -623,14 +624,17 @@
       const s=await api("/api/sessions/"+qs(sessionId));state=s;
       if(homeInventory && !s.recursive && s.status==="ready"){
         homeInventory.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
+        homeInventory.uncolored_bytes[s.directory]=s.uncolored_bytes;
       }
       if(pendingOnly && pendingCounts && !s.recursive && s.status==="ready" &&
          Object.hasOwn(pendingCounts.counts,s.directory)){
         const remaining = Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
         pendingCounts.counts[s.directory] = remaining;
+        pendingCounts.uncolored_bytes[s.directory] = s.uncolored_bytes;
         for(const context of folderContexts.values()){
           if(Object.hasOwn(context.result.counts,s.directory)){
             context.result.counts[s.directory] = remaining;
+            context.result.uncolored_bytes[s.directory] = s.uncolored_bytes;
           }
         }
         renderSubfolders();
@@ -795,11 +799,22 @@
   createPalette();health();
   let homeRoot = "", homeInventory = null, homeFiltered = false, homeRevision = 0;
   const homeOpenBranches = new Set();
-  function homeCount(path){
+  const megabytes = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2});
+  function fmtMegabytes(bytes){
+    if(bytes > 0 && bytes < 10000)return "< 0,01 Mo";
+    return megabytes.format(bytes / 1_000_000) + " Mo";
+  }
+  function homeTotals(path){
     if(!homeInventory)return null;
     const prefix = path ? path + "/" : "";
-    return Object.entries(homeInventory.counts).reduce((sum,[key,count]) =>
-      sum + (key===(path||".") || key.startsWith(prefix) ? count : 0),0);
+    let count = 0, bytes = 0;
+    for(const [key, videos] of Object.entries(homeInventory.counts)){
+      if(key === (path || ".") || key.startsWith(prefix)){
+        count += videos;
+        bytes += homeInventory.uncolored_bytes[key] || 0;
+      }
+    }
+    return {count, bytes};
   }
   async function openClassification(path){
     if(browsing || openingFolder)return;
@@ -823,8 +838,8 @@
       ? [{name:data.root_name,path:data.path==="."?"":data.path,root:true},...data.directories]
       : data.directories;
     for(const folder of folders){
-      const count=homeCount(folder.path);
-      if(homeFiltered && count===0)continue;
+      const totals=homeTotals(folder.path);
+      if(homeFiltered && totals?.count===0)continue;
       const row=document.createElement("div");row.className="homeRow";
       const expand=document.createElement("button");expand.type="button";expand.className="smallbtn treeExpand";
       expand.textContent=folder.root?"·":"▸";
@@ -841,11 +856,12 @@
       open.prepend(icon);
       row.append(expand,open);
       if(folder.path===directory && sessionId)row.classList.add("selected");
-      if(count!==null){
+      if(totals){
+        const {count, bytes} = totals;
         const badge=document.createElement("span");badge.className="treeCount";
-        badge.textContent=count.toLocaleString("fr-FR");
-        badge.setAttribute("aria-label",count+" vidéos à traiter dans cette branche");
-        badge.title="Vidéos à traiter dans cette branche";
+        badge.textContent=count.toLocaleString("fr-FR")+" · "+fmtMegabytes(bytes);
+        badge.title=count+" vidéo(s) sans pastille dans cette branche, "+fmtMegabytes(bytes);
+        badge.setAttribute("aria-label",badge.title);
         row.append(badge);
       }
       container.append(row);

@@ -7,9 +7,12 @@ sur Finder occupé (-15260) : erreur remontée au navigateur.
 """
 from __future__ import annotations
 
+import ctypes
+import errno
 import json
 import os
 from pathlib import Path, PurePosixPath
+import plistlib
 import subprocess
 import sys
 import time
@@ -22,25 +25,6 @@ COLORS = {"orange": 1, "rouge": 2, "jaune": 3, "bleu": 4,
 EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
               ".wmv", ".ts", ".mts", ".m2ts"}
 
-# Une seule commande osascript peut lire plusieurs étiquettes : moins de
-# processus AppleScript que le scan unitaire, sans modifier les fichiers.
-READ_BATCH = r'''
-on run argv
-  set outputText to ""
-  repeat with entryName in argv
-    try
-      set pathText to contents of entryName
-      tell application "Finder"
-        set colorNumber to label index of (POSIX file pathText as alias)
-      end tell
-      set outputText to outputText & (colorNumber as text) & linefeed
-    on error
-      set outputText to outputText & "-1" & linefeed
-    end try
-  end repeat
-  return outputText
-end run
-'''
 WRITE_AND_VERIFY = r'''
 on run argv
   set pathText to item 1 of argv
@@ -95,25 +79,68 @@ def valid_file(root: Path, relative: str):
     return resolved
 
 
+# Lecture native reprise de 2n_media_convert V2, avec retour en indices Finder.
+def native_finder_reader():
+    """Ouvre le lecteur des tags Finder modernes de macOS, sans sous-processus."""
+    if sys.platform != "darwin":
+        raise RuntimeError("Le lecteur Finder natif nécessite macOS")
+    getxattr = ctypes.CDLL(None, use_errno=True).getxattr
+    getxattr.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
+                         ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int)
+    getxattr.restype = ctypes.c_ssize_t
+    attr = b"com.apple.metadata:_kMDItemUserTags"
+
+    def read(path):
+        filename = os.fsencode(path)
+        size = getxattr(filename, attr, None, 0, 0, 0)
+        if size < 0:
+            error = ctypes.get_errno()
+            if error == errno.ENOATTR:
+                return 0
+            raise OSError(error, os.strerror(error), path)
+        if not size:
+            raise ValueError("attribut des tags Finder vide")
+        buffer = ctypes.create_string_buffer(size)
+        size = getxattr(filename, attr, buffer, size, 0, 0)
+        if size < 0:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error), path)
+        return label_from_native_tags(buffer.raw[:size])
+
+    return read
+
+
+def label_from_native_tags(raw):
+    try:
+        tags = plistlib.loads(raw)
+    except (plistlib.InvalidFileException, ValueError, OverflowError, IndexError) as exc:
+        raise ValueError("attribut des tags Finder illisible") from exc
+    if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+        raise ValueError("format des tags Finder inconnu")
+    colors = set()
+    for tag in tags:
+        _, separator, number = tag.rpartition("\n")
+        if separator and number:
+            if number in "1234567" and len(number) == 1:
+                colors.add(int(number))
+            elif number != "0":
+                raise ValueError("index de couleur Finder inconnu")
+    if len(colors) > 1:
+        raise ValueError("plusieurs couleurs dans les tags Finder")
+    return next(iter(colors), 0)
+
+
+
 def finder_labels(paths: list[Path]) -> list[int | None]:
     if not paths:
         return []
-    result = subprocess.run(
-        ["osascript", "-e", READ_BATCH, *(str(p) for p in paths)],
-        capture_output=True, text=True, check=False, timeout=90)
-    if result.returncode:
-        print("Finder a refusé le lot :", result.stderr.strip(), flush=True)
-        return [None] * len(paths)
-    lines = result.stdout.strip().splitlines()
-    if len(lines) != len(paths):
-        print(f"Finder : {len(lines)} réponses pour {len(paths)} fichiers", flush=True)
-        return [None] * len(paths)
+    read = native_finder_reader()
     values = []
-    for item in lines:
+    for path in paths:
         try:
-            number = int(item.strip())
-            values.append(number if number in range(8) else None)
-        except ValueError:
+            values.append(read(path))
+        except (OSError, ValueError) as exc:
+            print(f"Pastille Finder illisible : {path} : {exc}", flush=True)
             values.append(None)
     return values
 
@@ -147,7 +174,7 @@ def http_json(base, token, route, payload=None):
 
 def run_agent(root: Path, token: str, base: str):
     print(f"2N Color Agent macOS — {root} — {base}", flush=True)
-    print("Aucun retry sur Finder occupé : erreurs transmises à l'interface.", flush=True)
+    print("Lecture Finder native (getxattr) sur macOS.", flush=True)
     while True:
         try:
             job = http_json(base, token, "/api/agent/next")

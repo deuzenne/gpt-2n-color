@@ -1,5 +1,6 @@
 """Tests macOS agent sans Finder ni AppleScript réel."""
-from pathlib import Path
+import errno
+import plistlib
 import subprocess
 from unittest.mock import patch
 
@@ -31,16 +32,24 @@ def test_mac_agent_confines_paths_and_accepts_ts_mts(tmp_path):
         agent.valid_file(tmp_path, "symbolic.mts")
 
 
-def test_finder_reads_batch_one_osascript_process(tmp_path):
-    paths = [tmp_path / "a.mp4", tmp_path / "b.mkv", tmp_path / "c.MTS"]
-    with patch.object(agent.subprocess, "run",
-                      return_value=result("0\n4\n-1\n")) as run:
-        colors = agent.finder_labels(paths)
-    assert colors == [0, 4, None]
-    run.assert_called_once()
-    cmd = run.call_args.args[0]
-    assert cmd[:2] == ["osascript", "-e"]
-    assert cmd[3:] == [str(p) for p in paths]
+def test_finder_reads_native_labels_without_subprocess(tmp_path):
+    paths = [tmp_path / name for name in ("a.mp4", "b.mkv", "c.MTS")]
+
+    def read(path):
+        if path == paths[2]:
+            raise OSError(errno.EACCES, "Permission refusée")
+        tags = ["Projet"] if path == paths[0] else ["Bleu\n4"]
+        return agent.label_from_native_tags(plistlib.dumps(tags, fmt=plistlib.FMT_BINARY))
+
+    with patch.object(agent, "native_finder_reader", return_value=read):
+        with patch.object(agent.subprocess, "run") as run:
+            assert agent.finder_labels(paths) == [0, 4, None]
+    run.assert_not_called()
+
+
+def test_conflicting_native_colors_are_unreadable():
+    with pytest.raises(ValueError, match="plusieurs couleurs"):
+        agent.label_from_native_tags(plistlib.dumps(["Bleu\n4", "Vert\n6"]))
 
 
 def test_finder_busy_returns_error_not_silent_retry(tmp_path):
@@ -65,11 +74,3 @@ def test_finder_mismatched_color_is_error(tmp_path):
     with patch.object(agent.subprocess, "run", return_value=result("4\n")):
         with pytest.raises(RuntimeError, match="attendu 2"):
             agent.apply_color(path, 2)
-
-
-def test_scan_read_error_is_not_classified_as_uncolored(tmp_path):
-    paths = [tmp_path / "film.mp4"]
-    with patch.object(agent.subprocess, "run",
-                      return_value=result("", "Finder is busy (-15260)", 1)) as run:
-        assert agent.finder_labels(paths) == [None]
-    run.assert_called_once()
