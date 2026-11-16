@@ -298,3 +298,32 @@ def test_folder_counts_include_only_uncolored_video_bytes(env):
     assert state["counts"] == {"films": 1, "films/suite": 1}
     assert state["uncolored_bytes"] == {"films": 7, "films/suite": 3}
     assert state["unreadable"] == {"films/suite": 1}
+
+
+def test_exploration_browses_and_recolors_existing_videos(env):
+    root, client, headers = env
+    (root / "_2n_convertis").mkdir()
+    (root / "a.mp4").write_bytes(b"a")
+    (root / "b.mkv").write_bytes(b"bb")
+    client.get("/api/agent/next", headers=headers)
+    view = client.post("/api/explore", json={"directory": ""}).json()
+    assert view["directories"][0]["name"] == "_2n_convertis"
+    assert [video["name"] for video in view["videos"]] == ["a.mp4", "b.mkv"]
+    job = client.get("/api/agent/next", headers=headers).json()
+    scan_result(client, headers, job, [4, None])
+    assert client.get("/api/explore/jobs/" + view["job_id"]).json()["colors"] == [4, None]
+    response = client.post("/api/explore/color", json={"path": "a.mp4", "color": "aucune"})
+    assert response.status_code == 200
+    job = client.get("/api/agent/next", headers=headers).json()
+    assert (job["kind"], job["path"], job["label"]) == ("set", "a.mp4", 0)
+    client.post("/api/agent/result", headers=headers, json={"job_id": job["id"], "verified": 0})
+    assert client.get("/api/explore/jobs/" + response.json()["job_id"]).json()["label"] == 0
+    assert client.post("/api/explore/color", json={"path": "../a.mp4", "color": "vert"}).status_code == 400
+
+
+def test_exploration_available_without_finder(env):
+    root, client, _ = env
+    (root / "a.mp4").write_bytes(b"a")
+    data = client.post("/api/explore", json={"directory": ""}).json()
+    assert data["job_id"] is None
+    assert data["videos"][0]["name"] == "a.mp4"

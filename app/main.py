@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
+from functools import lru_cache
 import hmac
 import json
 import os
@@ -12,7 +13,7 @@ import threading
 import time
 
 from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -33,6 +34,7 @@ folder_scans: dict[str, dict] = {}
 jobs: dict[str, dict] = {}
 queue: deque[str] = deque()
 last_agent_seen = 0.0
+thumbnail_slots = threading.BoundedSemaphore(2)
 
 
 class SessionRequest(BaseModel):
@@ -42,6 +44,10 @@ class SessionRequest(BaseModel):
 
 class LabelRequest(BaseModel):
     color: str
+
+
+class ExploreLabelRequest(LabelRequest):
+    path: str
 
 
 class AgentProgress(BaseModel):
@@ -208,6 +214,68 @@ def tree(directory: str = ""):
             "root_name": DISPLAY_ROOT.name, "directories": children,
             "video_count": len(videos), "video_samples": videos[:8],
             "total_entries": total_entries}
+
+
+def create_explore_job(kind: str, **payload) -> str:
+    # Appelé sous verrou par les routes Exploration.
+    now = time.time()
+    expired = [jid for jid, job in jobs.items()
+               if job.get("explore") and now - job["created"] > 180]
+    for jid in expired:
+        if jobs[jid]["status"] == "queued":
+            queue.remove(jid)
+        jobs.pop(jid)
+    if sum(bool(job.get("explore")) for job in jobs.values()) >= 64:
+        raise HTTPException(429, "Trop d’opérations Finder en cours")
+    return create_job(kind, "", explore=True, **payload)
+
+
+@app.post("/api/explore")
+def explore_directory(req: SessionRequest):
+    data = tree(req.directory)
+    folder = select_directory(req.directory)
+    videos = sorted(enumerate_videos(folder, recursive=False), key=lambda v: v["name"].casefold())
+    if len(videos) > 25000:
+        raise HTTPException(413, "Plus de 25 000 vidéos dans ce dossier")
+    with lock:
+        jid = None
+        if videos and time.time() - last_agent_seen < 45:
+            jid = create_explore_job("scan", files=[video["path"] for video in videos])
+    return {**data, "videos": videos, "job_id": jid}
+
+
+@app.post("/api/explore/color")
+def explore_color(req: ExploreLabelRequest):
+    color = req.color.casefold().strip()
+    if color not in COLORS:
+        raise HTTPException(400, "Couleur inconnue")
+    target = resolve_path(req.path, directory=False)
+    if target.suffix.casefold() not in VIDEO_EXTENSIONS:
+        raise HTTPException(415, "Extension non vidéo")
+    with lock:
+        if time.time() - last_agent_seen >= 45:
+            raise HTTPException(503, "Agent Finder déconnecté")
+        return {"job_id": create_explore_job("set", path=rel(target), label=COLORS[color])}
+
+
+@app.get("/api/explore/jobs/{jid}")
+def explore_job(jid: str):
+    with lock:
+        job = jobs.get(jid)
+        if not job or not job.get("explore"):
+            raise HTTPException(404, "Opération Finder expirée")
+        return job.get("result", {"status": job["status"]})
+
+
+@app.delete("/api/explore/jobs/{jid}")
+def release_explore_job(jid: str):
+    with lock:
+        job = jobs.get(jid)
+        if job and job.get("explore") and job["status"] != "running":
+            if job["status"] == "queued":
+                queue.remove(jid)
+            jobs.pop(jid)
+    return {"ok": True}
 
 
 @app.post("/api/folder-counts")
@@ -385,7 +453,7 @@ def agent_next(x_agent_token: str | None = Header(default=None)):
             if not job or job["status"] != "queued":
                 continue
             owners = folder_scans if job.get("folder_count") else sessions
-            if job["session_id"] not in owners:
+            if not job.get("explore") and job["session_id"] not in owners:
                 jobs.pop(jid, None)
                 continue
             job["status"] = "running"
@@ -426,6 +494,17 @@ def agent_result(data: AgentResult, x_agent_token: str | None = Header(default=N
         if not job or job["status"] != "running":
             raise HTTPException(404, "Opération inconnue")
         job["status"] = "completed"
+        if job.get("explore"):
+            result = {"status": "error", "error": data.error or "Opération Finder non confirmée"}
+            if data.ok and job["kind"] == "scan" and data.colors is not None:
+                if len(data.colors) == len(job["files"]):
+                    result = {"status": "ready", "colors": [
+                        label if label in range(8) else None for label in data.colors
+                    ]}
+            elif data.ok and job["kind"] == "set" and data.verified == job["label"]:
+                result = {"status": "ready", "label": data.verified}
+            job["result"] = result
+            return {"ok": True}
         if job.get("folder_count"):
             scan = folder_scans.get(job["session_id"])
             if scan:
@@ -507,6 +586,35 @@ def probe_video(path: str = Query(...)):
                 "width": video.get("width"), "height": video.get("height")}
     except (OSError, ValueError, subprocess.SubprocessError):
         return {"duration": 0, "codec": "?", "width": None, "height": None}
+
+
+@lru_cache(maxsize=160)
+def thumbnail(target: Path, signature: tuple[int, int, int]) -> bytes:
+    with thumbnail_slots:
+        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+                   "-threads", "1", "-i", str(target), "-map", "0:V:0",
+                   "-vf", "scale=384:216:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                   "-frames:v", "1", "-threads", "1", "-c:v", "mjpeg",
+                   "-q:v", "5", "-f", "image2pipe", "pipe:1"]
+        image = subprocess.run(command, capture_output=True, check=True, timeout=10).stdout
+        if not image:
+            raise ValueError("Vidéo sans image")
+        return image
+
+
+@app.get("/api/thumbnail")
+def video_thumbnail(path: str = Query(...)):
+    target = resolve_path(path, directory=False)
+    if target.suffix.casefold() not in VIDEO_EXTENSIONS:
+        raise HTTPException(415, "Extension non vidéo")
+    try:
+        stat = target.stat()
+        image = thumbnail(target, (stat.st_ino, stat.st_mtime_ns, stat.st_size))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise HTTPException(422, "Vignette indisponible")
+    return Response(image, media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=60",
+                             "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/api/video")

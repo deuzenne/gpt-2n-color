@@ -49,8 +49,8 @@ def test_native_red_round_trip_preserves_other_tags(tmp_path):
     path = tmp_path / "film.mkv"
     stored = plistlib.dumps(["Projet", "Archive\n0"])
 
-    def read(_path):
-        return stored
+    def read(_path, attribute=agent.TAG_ATTRIBUTE):
+        return stored if attribute == agent.TAG_ATTRIBUTE else None
 
     def write(target, raw):
         nonlocal stored
@@ -68,7 +68,7 @@ def test_native_red_round_trip_preserves_other_tags(tmp_path):
 
 def test_native_write_preserves_custom_colored_tag(tmp_path):
     raw = plistlib.dumps(["Projet\n6"])
-    with patch.object(agent, "read_tag_attribute", return_value=raw), \
+    with patch.object(agent, "read_tag_attribute", side_effect=lambda path, attr=agent.TAG_ATTRIBUTE: raw if attr == agent.TAG_ATTRIBUTE else None), \
          patch.object(agent, "write_tag_attribute", create=True) as write:
         with pytest.raises(ValueError, match="personnalisé"):
             agent.apply_color(tmp_path / "film.mkv", 4)
@@ -100,3 +100,20 @@ def test_scan_keeps_modern_color_when_present(tmp_path, monkeypatch):
 
     monkeypatch.setattr(agent, "read_tag_attribute", read)
     assert agent.finder_labels([tmp_path / "moderne.mkv"]) == [6]
+
+@pytest.mark.parametrize("modern", [None, plistlib.dumps(["Rouge\n6", "Projet"])])
+def test_clear_and_change_legacy_pastille_preserve_other_flags(tmp_path, monkeypatch, modern):
+    info = bytearray(32)
+    info[9] = 0x8D
+    attrs = {agent.TAG_ATTRIBUTE: modern, agent.FINDER_INFO_ATTRIBUTE: bytes(info)}
+    monkeypatch.setattr(agent, "read_tag_attribute",
+                        lambda path, attr=agent.TAG_ATTRIBUTE: attrs[attr])
+    monkeypatch.setattr(agent, "write_tag_attribute",
+                        lambda path, raw, attr=agent.TAG_ATTRIBUTE: attrs.__setitem__(attr, raw))
+    path = tmp_path / "ancien.mkv"
+    assert agent.apply_color(path, 6) == 6
+    assert attrs[agent.FINDER_INFO_ATTRIBUTE][9] == 0x85
+    assert agent.apply_color(path, 0) == 0
+    assert attrs[agent.FINDER_INFO_ATTRIBUTE][9] == 0x81
+    if modern:
+        assert plistlib.loads(attrs[agent.TAG_ATTRIBUTE]) == ["Projet"]

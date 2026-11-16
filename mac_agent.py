@@ -108,10 +108,10 @@ def read_tag_attribute(path, attribute=TAG_ATTRIBUTE):
     return buffer.raw[:size]
 
 
-def write_tag_attribute(path, raw):
+def write_tag_attribute(path, raw, attribute=TAG_ATTRIBUTE):
     setxattr = tag_xattr_function("setxattr")
     data = ctypes.create_string_buffer(raw)
-    if setxattr(os.fsencode(path), TAG_ATTRIBUTE, data, len(raw), 0, XATTR_NOFOLLOW) < 0:
+    if setxattr(os.fsencode(path), attribute, data, len(raw), 0, XATTR_NOFOLLOW) < 0:
         error = ctypes.get_errno()
         raise OSError(error, os.strerror(error), path)
 
@@ -144,18 +144,19 @@ def label_from_native_tags(raw):
     return next(iter(colors), 0)
 
 
+def finder_info_label(info):
+    if info is None:
+        return 0
+    if len(info) != 32:
+        raise ValueError("attribut FinderInfo de taille inattendue")
+    number = (info[9] & 0x0E) >> 1  # Bits 1 à 3 des indicateurs Finder.
+    return LABEL_BY_TAG_NUMBER.get(number, 0)
+
+
 def native_finder_reader():
     def read(path):
-        label = label_from_native_tags(read_tag_attribute(path))
-        if label:
-            return label
-        info = read_tag_attribute(path, FINDER_INFO_ATTRIBUTE)
-        if info is None:
-            return 0
-        if len(info) != 32:
-            raise ValueError("attribut FinderInfo de taille inattendue")
-        number = (info[9] & 0x0E) >> 1  # Bits 1 à 3 des indicateurs Finder.
-        return LABEL_BY_TAG_NUMBER.get(number, 0)
+        return label_from_native_tags(read_tag_attribute(path)) or finder_info_label(
+            read_tag_attribute(path, FINDER_INFO_ATTRIBUTE))
 
     return read
 
@@ -178,7 +179,10 @@ def apply_color(path: Path, index: int) -> int:
     if index not in range(8):
         raise ValueError("Indice couleur invalide")
     raw = read_tag_attribute(path)
-    if label_from_native_tags(raw) == index:
+    modern = label_from_native_tags(raw)
+    info = read_tag_attribute(path, FINDER_INFO_ATTRIBUTE)
+    legacy = finder_info_label(info)
+    if (modern or legacy) == index:
         return index
     retained = []
     for tag in decode_tags(raw):
@@ -192,8 +196,22 @@ def apply_color(path: Path, index: int) -> int:
     if index:
         number, name, _ = TAG_COLORS[index]
         retained.append(f"{name}\n{number}")
-    write_tag_attribute(path, plistlib.dumps(retained, fmt=plistlib.FMT_BINARY))
-    applied = label_from_native_tags(read_tag_attribute(path))
+    # Conserver une pastille historique dans son attribut d’origine et préserver
+    # les autres indicateurs Finder. Si les deux attributs portent une couleur,
+    # les garder cohérents pour qu’une pastille supprimée ne réapparaisse pas.
+    if legacy:
+        changed = bytearray(info)
+        number = TAG_COLORS[index][0] if index else 0
+        changed[9] = (changed[9] & ~0x0E) | (number << 1)
+        write_tag_attribute(path, bytes(changed), FINDER_INFO_ATTRIBUTE)
+    if modern or not legacy:
+        try:
+            write_tag_attribute(path, plistlib.dumps(retained, fmt=plistlib.FMT_BINARY))
+        except OSError:
+            if legacy:
+                write_tag_attribute(path, info, FINDER_INFO_ATTRIBUTE)
+            raise
+    applied = native_finder_reader()(path)
     if applied != index:
         raise RuntimeError(f"Finder a retourné {applied}, attendu {index}")
     return applied

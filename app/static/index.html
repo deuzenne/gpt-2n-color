@@ -171,6 +171,28 @@
     .playerpanel .bar>*{flex:none;white-space:nowrap}
     .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
     .playerpanel .bar .swatch{width:30px}
+    .viewNav,.exploreCrumbs,.exploreFolders,.exploreToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .viewNav [aria-current="page"]{color:var(--cyan);border-color:var(--cyan)}
+    #explorePage{overflow:auto;flex:1;min-height:0}
+    .exploreCrumbs{margin-bottom:16px}
+    .exploreToolbar{margin:20px 0 12px;justify-content:space-between}
+    .exploreToolbar label{display:flex;align-items:center;gap:8px}
+    .exploreGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:12px}
+    .exploreClip{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#172332}
+    .exploreThumb{display:grid;place-items:center;position:relative;width:100%;background:#203145;color:white;
+      padding:0;aspect-ratio:16/9;border:0;cursor:pointer}
+    .exploreThumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .explorePlay{position:relative;display:grid;place-items:center;border-radius:50%;background:#101722ce;width:38px;height:38px}
+    .exploreCaption{display:grid;gap:8px;padding:10px;overflow-wrap:anywhere}
+    .exploreCaption label{display:flex;align-items:center;gap:6px}
+    #explorePage select{max-width:100%;background:#172332;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:5px}
+    #explorePlayerDialog{width:min(900px,95vw);max-height:90vh;padding:12px;border:1px solid var(--line);border-radius:14px;
+      color:var(--text);background:#172332}
+    #explorePlayerDialog::backdrop{background:#080d16c7}
+    .explorePlayerHead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    #explorePlayerTitle{overflow-wrap:anywhere}
+    #explorePlayer{display:block;width:100%;max-height:70vh;background:#0b101a;aspect-ratio:16/9}
+    @media(max-width:760px){.topbar{flex-wrap:wrap}.viewNav{order:3;flex-basis:100%}}
   </style>
 </head>
 <body>
@@ -180,6 +202,10 @@
         <span class="brandmark" aria-hidden="true">2N</span>
         <div><h1 aria-label="2N Color">Color</h1><small>Classement vidéo · macOS + Colima</small></div>
       </div>
+      <nav class="viewNav" aria-label="Vues">
+        <button class="smallbtn" id="openLibrary" type="button" aria-current="page">Bibliothèque</button>
+        <button class="smallbtn" id="openExploration" type="button">Exploration</button>
+      </nav>
       <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
         <time class="status localTime" id="localTime" title="Heure locale">—</time>
         <button type="button" class="smallbtn" id="toggleLibrary" hidden aria-controls="libraryPanel" aria-expanded="true" aria-label="Masquer la bibliothèque">Bibliothèque</button>
@@ -296,6 +322,22 @@
         </section>
       </main>
     </div>
+    <section id="explorePage" class="panel homePage" aria-label="Exploration" hidden>
+      <nav id="exploreCrumbs" class="exploreCrumbs" aria-label="Fil d’Ariane"></nav>
+      <div id="exploreFolders" class="exploreFolders" aria-label="Sous-dossiers"></div>
+      <div class="exploreToolbar">
+        <span id="exploreCount" class="muted" aria-live="polite"></span>
+        <label>Couleur <select id="exploreFilter"><option value="all">Toutes</option></select></label>
+        <button id="exploreRefresh" class="smallbtn" type="button">Actualiser</button>
+      </div>
+      <p id="exploreStatus" class="muted" role="status" hidden></p>
+      <div id="exploreGrid" class="exploreGrid"></div>
+    </section>
+    <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
+      <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
+      <video id="explorePlayer" controls playsinline></video>
+      <p id="explorePlayerStatus" class="muted" role="status" hidden></p>
+    </dialog>
     <footer class="foot">2N Color · Tri local sans suppression ni conversion permanente · Le dossier est monté en lecture seule dans Colima.</footer>
   </div>
   <div class="toast" id="toast" role="status"></div>
@@ -622,6 +664,7 @@
       setProgress(0);
       updateScanButton();
       const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:direct ? false : $("recursive").checked})});
+      if(!$("explorePage").hidden)return;
       sessionId=s.id;await poll();
     }catch(err){notice(err.message,6500)}
     finally{$("scanBtn").disabled=false}
@@ -630,7 +673,10 @@
     if(!sessionId||pollBusy)return;
     pollBusy=true;
     try{
-      const s=await api("/api/sessions/"+qs(sessionId));state=s;
+      const requested = sessionId;
+      const s=await api("/api/sessions/"+qs(requested));
+      if(requested!==sessionId)return;
+      state=s;
       if(homeInventory && !s.recursive && s.status==="ready"){
         homeInventory.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
         homeInventory.uncolored_bytes[s.directory]=s.uncolored_bytes;
@@ -784,7 +830,7 @@
   });
   $("skipBtn").onclick=skip;$("undoBtn").onclick=undo;$("noneBtn").onclick=()=>choose("aucune");
   document.addEventListener("keydown",e=>{
-    if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||["INPUT","TEXTAREA"].includes(document.activeElement?.tagName))return;
+    if(!$("explorePage").hidden || e.repeat||e.altKey||e.ctrlKey||e.metaKey||["INPUT","TEXTAREA"].includes(document.activeElement?.tagName))return;
     const n=Number(e.key);
     if(e.key>="1"&&e.key<="7"&&canAct()){e.preventDefault();choose(palette[n-1][0].toLowerCase())}
     else if(e.key==="0"&&canAct()){e.preventDefault();choose("aucune")}
@@ -977,6 +1023,235 @@
     await renderHomeBranch(homeRoot,$("homeTree"),homeRevision).catch(error=>notice(error.message));
     $("homeTree").scrollTop=scroll;
   };
+  const exploreColors = [
+    ["Sans pastille", "#a5b4c4", "aucune"],
+    ...["Orange","Rouge","Jaune","Bleu","Violet","Vert","Gris"].map(name =>
+      [name,palette.find(([label])=>label===name)[1],name.toLowerCase()]),
+  ];
+  const explorePage = $("explorePage"), exploreFilter = $("exploreFilter");
+  const explorerDialog = $("explorePlayerDialog"), explorerVideo = $("explorePlayer");
+  let exploreData = null, explorePath = "", exploreRevision = 0, exploreScan = null;
+  let explorerFile = null, explorerFallback = false, libraryDirty = false;
+  const recoloring = new Set();
+  for(const [index,[label]] of exploreColors.entries())exploreFilter.add(new Option(label,index));
+
+  function exploreElement(tag,text,className){
+    const node = document.createElement(tag);
+    if(text)node.textContent = text;
+    if(className)node.className = className;
+    if(tag==="button")node.type = "button";
+    return node;
+  }
+  function exploreStatus(text){
+    $("exploreStatus").textContent = text;
+    $("exploreStatus").hidden = !text;
+  }
+  async function waitExploreJob(id,active=()=>true){
+    try{
+      const url = "/api/explore/jobs/"+qs(id);
+      const deadline = Date.now()+120000;
+      while(active() && Date.now()<deadline){
+        const result = await api(url);
+        if(result.status==="ready")return result;
+        if(result.status==="error")throw new Error(result.error);
+        await new Promise(resolve=>setTimeout(resolve,350));
+      }
+      if(active())throw new Error("L’agent Finder n’a pas répondu. Actualise le dossier.");
+      return null;
+    }finally{
+      api("/api/explore/jobs/"+qs(id),{method:"DELETE"}).catch(()=>{});
+    }
+  }
+  function renderExploreNavigation(data){
+    const nav = $("exploreCrumbs"), folders = $("exploreFolders");
+    nav.replaceChildren(); folders.replaceChildren();
+    const parts = data.path==="." ? [] : data.path.split("/");
+    [data.root_name,...parts].forEach((name,i)=>{
+      if(i)nav.append(exploreElement("span","›"));
+      if(i===parts.length){
+        const current = exploreElement("strong",name);
+        current.setAttribute("aria-current","location");
+        nav.append(current);
+      }else{
+        const button = exploreElement("button",name,"smallbtn");
+        button.onclick = ()=>loadExplore(parts.slice(0,i).join("/"));
+        nav.append(button);
+      }
+    });
+    for(const folder of data.directories){
+      const button = exploreElement("button","▸ "+folder.name,"button");
+      button.onclick = ()=>loadExplore(folder.path);
+      folders.append(button);
+    }
+  }
+  async function loadExplore(path){
+    const revision = ++exploreRevision;
+    const active = ()=>revision===exploreRevision;
+    explorePath = path;
+    exploreData = null;
+    exploreScan = null;
+    $("exploreGrid").replaceChildren();
+    $("exploreCount").textContent = "";
+    exploreStatus("Chargement du dossier…");
+    try{
+      const data = await api("/api/explore",{method:"POST",body:JSON.stringify({directory:path})});
+      if(!active()){
+        if(data.job_id)api("/api/explore/jobs/"+qs(data.job_id),{method:"DELETE"}).catch(()=>{});
+        return;
+      }
+      explorePath = data.path==="." ? "" : data.path;
+      exploreData = data;
+      exploreScan = data.job_id;
+      renderExploreNavigation(data);
+      renderExploreGrid();
+      explorePage.scrollTop = 0;
+      try{localStorage.setItem("2n-color.explore-path",explorePath)}catch{}
+      exploreStatus(exploreScan ? "Lecture des pastilles Finder…" :
+        (data.videos.length ? "Finder déconnecté · les pastilles sont indisponibles." : ""));
+      if(!exploreScan)return;
+      const result = await waitExploreJob(exploreScan,active);
+      if(!active() || !result)return;
+      data.videos.forEach((file,index)=>{file.label = result.colors[index] ?? null;});
+      exploreScan = null;
+      renderExploreGrid();
+      exploreStatus(data.videos.some(file=>file.label===null) ? "Certaines pastilles Finder sont illisibles." : "");
+    }catch(error){
+      if(active()){
+        exploreScan = null;
+        if(!exploreData && path){
+          const root = exploreElement("button","Revenir à la racine","smallbtn");
+          root.onclick = ()=>loadExplore("");
+          $("exploreCrumbs").replaceChildren(root);
+          $("exploreFolders").replaceChildren();
+        }
+        renderExploreGrid();
+        exploreStatus(error.message);
+      }
+    }
+  }
+  function renderExploreGrid(){
+    if(!exploreData)return;
+    const grid = $("exploreGrid");
+    const visible = exploreData.videos.filter(file=>exploreFilter.value==="all" ||
+      (file.label!=null && String(file.label)===exploreFilter.value));
+    $("exploreCount").textContent = visible.length.toLocaleString("fr-FR")+
+      (visible.length===1 ? " vidéo" : " vidéos");
+    grid.replaceChildren();
+    if(!visible.length && !exploreScan)
+      grid.append(exploreElement("p","Aucune vidéo à afficher.","muted"));
+    for(const file of visible){
+      const card = exploreElement("article",null,"exploreClip");
+      const thumb = exploreElement("button",null,"exploreThumb");
+      thumb.setAttribute("aria-label","Lire "+file.name);
+      const image = exploreElement("img");
+      image.alt = "";
+      image.loading = "lazy";
+      image.onerror = ()=>image.remove();
+      image.src = "/api/thumbnail?path="+qs(file.path);
+      const play = exploreElement("span","▶","explorePlay");
+      play.setAttribute("aria-hidden","true");
+      thumb.append(image,play);
+      thumb.onclick = ()=>openExplorerVideo(file);
+      const caption = exploreElement("div",null,"exploreCaption");
+      caption.append(exploreElement("strong",file.name));
+      const label = exploreElement("label"), dot = exploreElement("span",null,"dot");
+      const select = exploreElement("select");
+      select.setAttribute("aria-label","Pastille de "+file.name);
+      if(file.label==null){
+        select.add(new Option(exploreScan ? "Lecture…" : "Indisponible",""));
+        select.disabled = true;
+      }else{
+        for(const [index,[name]] of exploreColors.entries())select.add(new Option(name,index));
+        select.value = file.label;
+        dot.style.backgroundColor = exploreColors[file.label][1];
+        select.disabled = recoloring.has(file.path);
+        select.onchange = ()=>recolorExplore(file,Number(select.value),select);
+      }
+      label.append(dot,select);
+      caption.append(label);
+      card.append(thumb,caption);
+      grid.append(card);
+    }
+  }
+  async function recolorExplore(file,label,select){
+    recoloring.add(file.path);
+    select.disabled = true;
+    try{
+      const {job_id} = await api("/api/explore/color",{method:"POST",body:JSON.stringify({
+        path:file.path,color:exploreColors[label][2]
+      })});
+      const confirmed = await waitExploreJob(job_id);
+      const current = exploreData?.videos.find(item=>item.path===file.path);
+      if(current)current.label = confirmed.label;
+      libraryDirty = true;
+    }catch(error){notice(error.message,6500)}
+    finally{
+      recoloring.delete(file.path);
+      renderExploreGrid();
+    }
+  }
+  function startExplorerVideo(source){
+    explorerVideo.src = source;
+    explorerVideo.play().catch(()=>{});
+  }
+  function openExplorerVideo(file){
+    explorerFile = file;
+    explorerFallback = !/\.(mp4|m4v|mov)$/i.test(file.name);
+    $("explorePlayerTitle").textContent = file.name;
+    $("explorePlayerStatus").hidden = true;
+    explorerDialog.showModal();
+    startExplorerVideo(explorerFallback ? videoUrl(file.path) : "/api/video?path="+qs(file.path));
+  }
+  explorerVideo.onerror = ()=>{
+    if(!explorerFile)return;
+    if(!explorerFallback){
+      explorerFallback = true;
+      startExplorerVideo(videoUrl(explorerFile.path));
+    }else{
+      $("explorePlayerStatus").textContent = "Lecture indisponible pour cette vidéo.";
+      $("explorePlayerStatus").hidden = false;
+    }
+  };
+  explorerDialog.addEventListener("close",()=>{
+    explorerFile = null;
+    explorerVideo.pause();
+    explorerVideo.removeAttribute("src");
+    explorerVideo.load();
+  });
+  exploreFilter.onchange = renderExploreGrid;
+  $("exploreRefresh").onclick = ()=>loadExplore(explorePath);
+  $("openExploration").onclick = ()=>{
+    if(!explorePage.hidden)return;
+    stopVideo();
+    sessionId = null; state = null; activePath = null;
+    $("homePage").hidden = true;
+    $("classifyPage").hidden = true;
+    $("homeBack").hidden = true;
+    $("toggleLibrary").hidden = true;
+    explorePage.hidden = false;
+    $("openExploration").setAttribute("aria-current","page");
+    $("openLibrary").removeAttribute("aria-current");
+    let savedPath = explorePath || homeRoot;
+    try{savedPath = localStorage.getItem("2n-color.explore-path") ?? savedPath}catch{}
+    loadExplore(savedPath);
+  };
+  $("openLibrary").onclick = ()=>{
+    if(explorePage.hidden){
+      if(!$("classifyPage").hidden)$("homeBack").click();
+      return;
+    }
+    ++exploreRevision;
+    explorePage.hidden = true;
+    $("homePage").hidden = false;
+    $("openLibrary").setAttribute("aria-current","page");
+    $("openExploration").removeAttribute("aria-current");
+    if(libraryDirty){
+      libraryDirty = false;
+      folderContexts.clear();
+      loadHomeRoot(homeRoot);
+    }
+  };
+
   let savedHome="";
   try{savedHome=localStorage.getItem("2n-color.home-root")||localStorage.getItem(lastDirectoryKey)||""}catch{}
   loadHomeRoot(savedHome);
