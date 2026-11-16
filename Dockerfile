@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certi
 WORKDIR /opt/2n-color
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY VERSION .
 COPY app ./app
 RUN useradd --system --uid 10001 --create-home color
 USER color

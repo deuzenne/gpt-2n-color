@@ -85,7 +85,16 @@
     .notice{margin-top:8px;background:#443025;border:1px solid #966b38;color:#f2cc93;padding:12px 15px;border-radius:11px;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
     .progressHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .progressPercent{color:var(--cyan);font-size:12px;font-weight:750;font-variant-numeric:tabular-nums}
-    .progress{height:6px;background:#222c3e;border-radius:8px;overflow:hidden;margin:14px 0 6px}.progress>div{height:100%;background:linear-gradient(90deg,#5e92ed,#7cdae2);transition:width .2s}
+    .progress{--rainbow:linear-gradient(90deg,#ff5169,#ff923f,#ffd94d,#35d789,#4b9bff,#bb70f5);
+      height:8px;background:#222c3e;border-radius:999px;overflow:hidden;margin:14px 0 6px}
+    .progress>div{height:100%;border-radius:inherit;background:var(--rainbow);
+      box-shadow:inset 0 1px 0 #ffffff40;transition:width .22s ease-out}
+    .progress:not([aria-valuenow])>div{width:42%;animation:progress-sweep 1.35s ease-in-out infinite alternate}
+    @keyframes progress-sweep{from{transform:translateX(-35%)}to{transform:translateX(173%)}}
+    @media(prefers-reduced-motion:reduce){
+      .progress>div{transition:none}
+      .progress:not([aria-valuenow])>div{animation:none;transform:translateX(69%)}
+    }
     .toast{position:fixed;bottom:24px;right:24px;background:#25344a;color:#fff;border:1px solid #527294;border-radius:12px;padding:12px 17px;max-width:min(500px,90vw);box-shadow:0 16px 50px #0008;z-index:100;display:none}
     .foot{text-align:center;font-size:11px;color:#6f7d96;margin-top:22px}
     .pathentry{display:flex;gap:6px;align-items:stretch}
@@ -157,10 +166,7 @@
     .calculationCard p{color:var(--muted);font-size:13px;margin:10px 0 24px}
     .calculationNumbers{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums}
     #calculationPercent{color:var(--cyan)}
-    #calculationProgress{display:block;width:100%;height:10px;border:0;border-radius:8px;overflow:hidden;accent-color:var(--cyan)}
-    #calculationProgress::-webkit-progress-bar{background:#29384a}
-    #calculationProgress::-webkit-progress-value{background:var(--cyan);border-radius:8px}
-    #calculationProgress::-moz-progress-bar{background:var(--cyan);border-radius:8px}
+    #calculationProgress{height:12px;margin:0;background:#29384a}
     .playerpanel .bar{flex-wrap:nowrap;gap:5px;overflow-x:auto;padding:4px}
     .playerpanel .bar>*{flex:none;white-space:nowrap}
     .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
@@ -194,7 +200,7 @@
           <strong>Analyse de la bibliothèque</strong>
           <p id="calculationPhase" role="status" aria-live="polite">Inventaire des vidéos…</p>
           <div class="calculationNumbers"><span id="calculationCount">Recherche des fichiers</span><strong id="calculationPercent">…</strong></div>
-          <progress id="calculationProgress" max="100" aria-label="Progression du calcul des dossiers"></progress>
+          <div class="progress" id="calculationProgress" role="progressbar" aria-label="Progression du calcul des dossiers" aria-valuemin="0" aria-valuemax="100"><div></div></div>
         </div>
       </div>
     </section>
@@ -589,11 +595,14 @@
     $("noneBtn").disabled=$("skipBtn").disabled=!canAct();
     $("undoBtn").disabled=!(state&&state.can_undo);
   }
+  function setProgressFill(track, percent){
+    track.firstElementChild.style.width = percent + "%";
+    track.setAttribute("aria-valuenow", percent);
+  }
   function setProgress(ratio){
     const percent = Math.min(100, Math.floor(ratio * 100));
     const bar = $("progressBar");
-    bar.style.width = percent + "%";
-    bar.parentElement.setAttribute("aria-valuenow", percent);
+    setProgressFill(bar.parentElement, percent);
     $("progressPercent").textContent = percent + " %";
   }
   async function openPendingFolder(path){
@@ -903,7 +912,7 @@
   $("homeRootForm").onsubmit=event=>{event.preventDefault();loadHomeRoot($("homeRootInput").value.trim())};
   function calculationProgress(done, total){
     const percent = total ? Math.min(100,Math.floor(done/total*100)) : 100;
-    $("calculationProgress").value=percent;
+    setProgressFill($("calculationProgress"), percent);
     $("calculationPercent").textContent=percent+" %";
     $("calculationCount").textContent=done.toLocaleString("fr-FR")+" / "+total.toLocaleString("fr-FR")+" vidéos";
     $("calculationPhase").textContent="Lecture des pastilles Finder";
@@ -916,7 +925,9 @@
     $("homeTree").setAttribute("aria-busy","true");
     $("homeRootForm").inert=true;
     $("homeTree").inert=true;
-    $("calculationProgress").removeAttribute("value");
+    const track = $("calculationProgress");
+    track.removeAttribute("aria-valuenow");
+    track.firstElementChild.style.removeProperty("width");
     $("calculationPercent").textContent="…";
     $("calculationCount").textContent="Recherche des fichiers";
     $("calculationPhase").textContent="Inventaire des vidéos…";

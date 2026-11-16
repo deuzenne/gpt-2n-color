@@ -55,7 +55,7 @@ pgrep -fl mac_agent.py
 tail -n 40 data/mac-agent.log
 ```
 
-`agent_online: true` signifie que l’agent a contacté l’application dans les 45 dernières secondes. Si la valeur est `false`, lance `./deploy.sh`, puis recharge la page. En cas de refus d’automatisation dans le journal, vérifie l’autorisation de contrôler Finder dans **Réglages Système → Confidentialité et sécurité → Automatisation** pour l’application qui lance l’agent.
+`agent_online: true` signifie que l’agent a contacté l’application dans les 45 dernières secondes. Si la valeur est `false`, lance `./deploy.sh`, puis recharge la page. Si une écriture échoue, consulte `data/mac-agent.log` et vérifie que macOS autorise l’accès en écriture au fichier et à ses attributs.
 
 Si Finder est connecté mais que le calcul échoue encore, clique sur **Calculer** et consulte les deux journaux au moment de l’erreur.
 

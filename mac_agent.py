@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Compagnon Finder macOS 2N Color : sortie HTTPS locale, aucune écoute réseau.
+"""Compagnon Finder macOS 2N Color : sortie HTTP locale, aucune écoute réseau.
 
 Il lit et applique les pastilles Finder pour l'application Docker/Colima,
-sans supprimer, renommer ou convertir aucun média. AUCUN retry AppleScript
-sur Finder occupé (-15260) : erreur remontée au navigateur.
+sans supprimer, renommer ou convertir aucun média.
 """
 from __future__ import annotations
 
 import ctypes
+from functools import lru_cache
 import errno
 import json
 import os
 from pathlib import Path, PurePosixPath
 import plistlib
-import subprocess
 import sys
 import time
 import urllib.error
@@ -25,18 +24,19 @@ COLORS = {"orange": 1, "rouge": 2, "jaune": 3, "bleu": 4,
 EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
               ".wmv", ".ts", ".mts", ".m2ts"}
 
-WRITE_AND_VERIFY = r'''
-on run argv
-  set pathText to item 1 of argv
-  set expectedIndex to item 2 of argv as integer
-  tell application "Finder"
-    set theFile to (POSIX file pathText as alias)
-    set label index of theFile to expectedIndex
-    set finalIndex to label index of theFile
-  end tell
-  return finalIndex as text
-end run
-'''
+TAG_ATTRIBUTE = b"com.apple.metadata:_kMDItemUserTags"
+# Indices de l’interface historiques, numéros des tags macOS et noms usuels.
+TAG_COLORS = {
+    1: (7, "Orange", "Orange"),
+    2: (6, "Rouge", "Red"),
+    3: (5, "Jaune", "Yellow"),
+    4: (4, "Bleu", "Blue"),
+    5: (3, "Violet", "Purple"),
+    6: (2, "Vert", "Green"),
+    7: (1, "Gris", "Gray"),
+}
+LABEL_BY_TAG_NUMBER = {number: label for label, (number, _, _) in TAG_COLORS.items()}
+XATTR_NOFOLLOW = 0x0001
 
 
 def load_env():
@@ -79,56 +79,72 @@ def valid_file(root: Path, relative: str):
     return resolved
 
 
-# Lecture native reprise de 2n_media_convert V2, avec retour en indices Finder.
-def native_finder_reader():
-    """Ouvre le lecteur des tags Finder modernes de macOS, sans sous-processus."""
+@lru_cache(maxsize=2)
+def tag_xattr_function(name):
     if sys.platform != "darwin":
-        raise RuntimeError("Le lecteur Finder natif nécessite macOS")
-    getxattr = ctypes.CDLL(None, use_errno=True).getxattr
-    getxattr.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
+        raise RuntimeError("Les tags Finder natifs nécessitent macOS")
+    function = getattr(ctypes.CDLL(None, use_errno=True), name)
+    function.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
                          ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int)
-    getxattr.restype = ctypes.c_ssize_t
-    attr = b"com.apple.metadata:_kMDItemUserTags"
-
-    def read(path):
-        filename = os.fsencode(path)
-        size = getxattr(filename, attr, None, 0, 0, 0)
-        if size < 0:
-            error = ctypes.get_errno()
-            if error == errno.ENOATTR:
-                return 0
-            raise OSError(error, os.strerror(error), path)
-        if not size:
-            raise ValueError("attribut des tags Finder vide")
-        buffer = ctypes.create_string_buffer(size)
-        size = getxattr(filename, attr, buffer, size, 0, 0)
-        if size < 0:
-            error = ctypes.get_errno()
-            raise OSError(error, os.strerror(error), path)
-        return label_from_native_tags(buffer.raw[:size])
-
-    return read
+    function.restype = ctypes.c_ssize_t if name == "getxattr" else ctypes.c_int
+    return function
 
 
-def label_from_native_tags(raw):
+def read_tag_attribute(path):
+    getxattr = tag_xattr_function("getxattr")
+    filename = os.fsencode(path)
+    size = getxattr(filename, TAG_ATTRIBUTE, None, 0, 0, XATTR_NOFOLLOW)
+    if size < 0:
+        error = ctypes.get_errno()
+        if error == errno.ENOATTR:
+            return None
+        raise OSError(error, os.strerror(error), path)
+    buffer = ctypes.create_string_buffer(size)
+    size = getxattr(filename, TAG_ATTRIBUTE, buffer, size, 0, XATTR_NOFOLLOW)
+    if size < 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), path)
+    return buffer.raw[:size]
+
+
+def write_tag_attribute(path, raw):
+    setxattr = tag_xattr_function("setxattr")
+    data = ctypes.create_string_buffer(raw)
+    if setxattr(os.fsencode(path), TAG_ATTRIBUTE, data, len(raw), 0, XATTR_NOFOLLOW) < 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), path)
+
+
+def decode_tags(raw):
+    if raw is None:
+        return []
     try:
         tags = plistlib.loads(raw)
     except (plistlib.InvalidFileException, ValueError, OverflowError, IndexError) as exc:
         raise ValueError("attribut des tags Finder illisible") from exc
     if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
         raise ValueError("format des tags Finder inconnu")
-    colors = set()
-    for tag in tags:
-        _, separator, number = tag.rpartition("\n")
-        if separator and number:
-            if number in "1234567" and len(number) == 1:
-                colors.add(int(number))
-            elif number != "0":
-                raise ValueError("index de couleur Finder inconnu")
+    return tags
+
+
+def tag_label(tag):
+    _, separator, number = tag.rpartition("\n")
+    if not separator or number in {"", "0"}:
+        return 0
+    if len(number) == 1 and number in "1234567":
+        return LABEL_BY_TAG_NUMBER[int(number)]
+    raise ValueError("index de couleur Finder inconnu")
+
+
+def label_from_native_tags(raw):
+    colors = {tag_label(tag) for tag in decode_tags(raw)} - {0}
     if len(colors) > 1:
         raise ValueError("plusieurs couleurs dans les tags Finder")
     return next(iter(colors), 0)
 
+
+def native_finder_reader():
+    return lambda path: label_from_native_tags(read_tag_attribute(path))
 
 
 def finder_labels(paths: list[Path]) -> list[int | None]:
@@ -148,16 +164,23 @@ def finder_labels(paths: list[Path]) -> list[int | None]:
 def apply_color(path: Path, index: int) -> int:
     if index not in range(8):
         raise ValueError("Indice couleur invalide")
-    result = subprocess.run(
-        ["osascript", "-e", WRITE_AND_VERIFY, str(path), str(index)],
-        capture_output=True, text=True, check=False, timeout=20)
-    if result.returncode:
-        raise RuntimeError(
-            f"Finder n'a pas accepté la pastille : {result.stderr.strip()[:500]}")
-    try:
-        applied = int(result.stdout.strip())
-    except ValueError as exc:
-        raise RuntimeError("Réponse Finder invalide") from exc
+    raw = read_tag_attribute(path)
+    if label_from_native_tags(raw) == index:
+        return index
+    retained = []
+    for tag in decode_tags(raw):
+        label = tag_label(tag)
+        if not label:
+            retained.append(tag)
+            continue
+        _, french, english = TAG_COLORS[label]
+        if tag.rpartition("\n")[0].casefold() not in {french.casefold(), english.casefold()}:
+            raise ValueError("Un tag Finder coloré personnalisé est déjà présent")
+    if index:
+        number, name, _ = TAG_COLORS[index]
+        retained.append(f"{name}\n{number}")
+    write_tag_attribute(path, plistlib.dumps(retained, fmt=plistlib.FMT_BINARY))
+    applied = label_from_native_tags(read_tag_attribute(path))
     if applied != index:
         raise RuntimeError(f"Finder a retourné {applied}, attendu {index}")
     return applied
@@ -174,7 +197,7 @@ def http_json(base, token, route, payload=None):
 
 def run_agent(root: Path, token: str, base: str):
     print(f"2N Color Agent macOS — {root} — {base}", flush=True)
-    print("Lecture Finder native (getxattr) sur macOS.", flush=True)
+    print("Lecture et écriture natives des tags Finder sur macOS.", flush=True)
     while True:
         try:
             job = http_json(base, token, "/api/agent/next")
@@ -222,7 +245,7 @@ def run_agent(root: Path, token: str, base: str):
                 print(f"Pastille Finder confirmée : {path.name} → {verified}", flush=True)
             else:
                 raise RuntimeError("Type de job inconnu")
-        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError,
+        except (OSError, ValueError, RuntimeError,
                 urllib.error.URLError) as exc:
             print(f"Job {jid} EN ERREUR : {exc}", flush=True)
             try:

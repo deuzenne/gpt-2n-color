@@ -39,6 +39,13 @@ def scan_result(client, headers, job, indexes):
     assert response.status_code == 200, response.text
 
 
+def test_health_reports_packaged_version(env):
+    _, client, _ = env
+    version = Path(__file__).resolve().parents[1].joinpath("VERSION").read_text().strip()
+    assert client.get("/api/health").json()["version"] == version
+    assert "COPY VERSION ." in Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text()
+
+
 def test_tree_navigation_and_path_safety(env):
     root, client, headers = env
     (root / "vacances").mkdir()
