@@ -191,8 +191,9 @@
     .exploreTag:disabled{opacity:.65;cursor:default}
     .exploreTagDot{width:14px;height:14px;border-radius:50%;background:var(--tag-color,transparent);border:1px solid var(--tag-color,#a5b4c4)}
     #exploreTagDialog,#explorePlayerDialog{color:var(--text);background:#172332;border:1px solid var(--line);border-radius:14px}
-    #exploreTagDialog{width:min(360px,95vw);padding:14px}
-    #exploreTagDialog::backdrop{background:#080d1690}
+    #exploreTagDialog{position:fixed;inset:auto;margin:0;z-index:30;box-sizing:border-box;
+      width:min(252px,calc(100vw - 16px));max-height:calc(100dvh - 16px);
+      overflow:auto;padding:9px;border-radius:10px;box-shadow:0 10px 26px #080d16b0}
     #exploreTagOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
     #exploreTagOptions button{display:flex;align-items:center;gap:8px;text-align:left}
     #exploreTagOptions button[aria-pressed="true"]{border-color:var(--cyan)}
@@ -345,7 +346,7 @@
       <div id="exploreGrid" class="exploreGrid"></div>
     </section>
     <dialog id="exploreTagDialog" aria-labelledby="exploreTagTitle">
-      <div class="explorePlayerHead"><strong id="exploreTagTitle">Pastille Finder</strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
+      <strong id="exploreTagTitle" hidden>Pastille Finder</strong>
       <div id="exploreTagOptions"></div>
     </dialog>
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
@@ -1105,6 +1106,7 @@
     explorePath = path;
     exploreData = null;
     exploreScan = null;
+    closeExploreTags();
     $("exploreGrid").replaceChildren();
     $("exploreCount").textContent = "";
     exploreStatus("Chargement du dossier…");
@@ -1145,6 +1147,54 @@
     }
   }
   const tagDialog = $("exploreTagDialog");
+  let tagAnchor = null;
+  function closeExploreTags(restoreFocus=false){
+    if(!tagAnchor)return;
+    const trigger = tagAnchor;
+    tagAnchor = null;
+    trigger.setAttribute("aria-expanded","false");
+    tagDialog.close();
+    if(restoreFocus && trigger.isConnected)trigger.focus({preventScroll:true});
+  }
+  function tagMenuPosition(anchor, width, height, viewportWidth, viewportHeight){
+    const margin = 8, gap = 5;
+    const below = viewportHeight - anchor.bottom - gap - margin;
+    const above = anchor.top - gap - margin;
+    const preferredTop = height > below && above > below
+      ? anchor.top - gap - height : anchor.bottom + gap;
+    return {
+      left: Math.max(margin,Math.min(anchor.right-width,viewportWidth-width-margin)),
+      top: Math.max(margin,Math.min(preferredTop,viewportHeight-height-margin)),
+    };
+  }
+  function positionExploreTags(){
+    if(!tagAnchor)return;
+    const anchor = tagAnchor.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const panel = explorePage.getBoundingClientRect();
+    if(!tagAnchor.isConnected || anchor.bottom<=Math.max(0,panel.top) ||
+       anchor.top>=Math.min(viewportHeight,panel.bottom)){
+      closeExploreTags();
+      return;
+    }
+    const {width,height} = tagDialog.getBoundingClientRect();
+    const {left,top} = tagMenuPosition(anchor,width,height,viewportWidth,viewportHeight);
+    tagDialog.style.left = left+"px";
+    tagDialog.style.top = top+"px";
+  }
+  document.addEventListener("pointerdown",event=>{
+    if(tagAnchor && !tagDialog.contains(event.target) && !tagAnchor.contains(event.target))
+      closeExploreTags();
+  });
+  document.addEventListener("keydown",event=>{
+    if(tagAnchor && event.key==="Escape"){
+      event.preventDefault();
+      closeExploreTags(true);
+    }
+  });
+  window.addEventListener("resize",positionExploreTags);
+  document.addEventListener("scroll",positionExploreTags,true);
   const durationTargets = new WeakMap();
   const durationQueue = [];
   let activeProbes = 0;
@@ -1189,6 +1239,11 @@
     return dot;
   }
   function openExploreTags(file,trigger){
+    if(tagAnchor===trigger){
+      closeExploreTags(true);
+      return;
+    }
+    closeExploreTags();
     const options = $("exploreTagOptions");
     options.replaceChildren();
     for(const [index,[name,color]] of exploreColors.entries()){
@@ -1196,13 +1251,16 @@
       option.setAttribute("aria-pressed",String(index===file.label));
       option.append(exploreColorDot(color),document.createTextNode(name));
       option.onclick = ()=>{
-        tagDialog.close();
+        closeExploreTags(true);
         if(index!==file.label)recolorExplore(file,index,trigger);
       };
       options.append(option);
     }
-    tagDialog.showModal();
-    options.querySelector('[aria-pressed="true"]').focus();
+    tagAnchor = trigger;
+    trigger.setAttribute("aria-expanded","true");
+    tagDialog.show();
+    positionExploreTags();
+    if(tagAnchor)options.querySelector('[aria-pressed="true"]').focus({preventScroll:true});
   }
   function renderExploreGrid(){
     if(!exploreData)return;
@@ -1211,6 +1269,7 @@
       (file.label!=null && String(file.label)===exploreFilter.value));
     $("exploreCount").textContent = visible.length.toLocaleString("fr-FR")+
       (visible.length===1 ? " vidéo" : " vidéos");
+    closeExploreTags();
     durationObserver?.disconnect();
     grid.replaceChildren();
     if(!visible.length && !exploreScan)
@@ -1240,6 +1299,8 @@
         [exploreScan ? "Lecture en cours" : "Indisponible"];
       tag.setAttribute("aria-label","Pastille de "+file.name+" · "+name);
       tag.setAttribute("aria-haspopup","dialog");
+      tag.setAttribute("aria-controls","exploreTagDialog");
+      tag.setAttribute("aria-expanded","false");
       tag.title = name;
       tag.disabled = file.label==null || recoloring.has(file.path);
       tag.append(exploreColorDot(color));
@@ -1318,6 +1379,7 @@
       return;
     }
     ++exploreRevision;
+    closeExploreTags();
     explorePage.hidden = true;
     $("homePage").hidden = false;
     $("openLibrary").setAttribute("aria-current","page");
