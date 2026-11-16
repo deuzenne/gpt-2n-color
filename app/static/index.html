@@ -808,9 +808,9 @@
   createPalette();health();
   let homeRoot = "", homeInventory = null, homeFiltered = false, homeRevision = 0;
   const homeOpenBranches = new Set();
-  const megabytes = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:2});
+  const megabytes = new Intl.NumberFormat("fr-FR", {maximumFractionDigits:0});
   function fmtMegabytes(bytes){
-    if(bytes > 0 && bytes < 10000)return "< 0,01 Mo";
+    if(bytes > 0 && bytes < 1_000_000)return "< 1 Mo";
     return megabytes.format(bytes / 1_000_000) + " Mo";
   }
   function homeTotals(path){
