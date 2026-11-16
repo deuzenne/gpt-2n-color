@@ -183,8 +183,19 @@
       padding:0;aspect-ratio:16/9;border:0;cursor:pointer}
     .exploreThumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     .explorePlay{position:relative;display:grid;place-items:center;border-radius:50%;background:#101722ce;width:38px;height:38px}
-    .exploreCaption{display:grid;gap:8px;padding:10px;overflow-wrap:anywhere}
-    .exploreCaption label{display:flex;align-items:center;gap:6px}
+    .exploreCaption{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;padding:8px 10px;align-items:center}
+    .exploreCaption strong{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .exploreMeta{grid-column:1;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+    .exploreTag{grid-column:2;grid-row:1 / span 2;display:grid;place-items:center;width:29px;height:29px;border:1px solid transparent;border-radius:8px;background:transparent;cursor:pointer}
+    .exploreTag:hover:not(:disabled){border-color:var(--line);background:#203145}
+    .exploreTag:disabled{opacity:.65;cursor:default}
+    .exploreTagDot{width:14px;height:14px;border-radius:50%;background:var(--tag-color,transparent);border:1px solid var(--tag-color,#a5b4c4)}
+    #exploreTagDialog,#explorePlayerDialog{color:var(--text);background:#172332;border:1px solid var(--line);border-radius:14px}
+    #exploreTagDialog{width:min(360px,95vw);padding:14px}
+    #exploreTagDialog::backdrop{background:#080d1690}
+    #exploreTagOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+    #exploreTagOptions button{display:flex;align-items:center;gap:8px;text-align:left}
+    #exploreTagOptions button[aria-pressed="true"]{border-color:var(--cyan)}
     #explorePage select{max-width:100%;background:#172332;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:5px}
     #explorePlayerDialog{width:min(900px,95vw);max-height:90vh;padding:12px;border:1px solid var(--line);border-radius:14px;
       color:var(--text);background:#172332}
@@ -333,6 +344,10 @@
       <p id="exploreStatus" class="muted" role="status" hidden></p>
       <div id="exploreGrid" class="exploreGrid"></div>
     </section>
+    <dialog id="exploreTagDialog" aria-labelledby="exploreTagTitle">
+      <div class="explorePlayerHead"><strong id="exploreTagTitle">Pastille Finder</strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
+      <div id="exploreTagOptions"></div>
+    </dialog>
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
       <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
       <video id="explorePlayer" controls playsinline></video>
@@ -1024,7 +1039,7 @@
     $("homeTree").scrollTop=scroll;
   };
   const exploreColors = [
-    ["Sans pastille", "#a5b4c4", "aucune"],
+    ["Sans pastille", "", "aucune"],
     ...["Orange","Rouge","Jaune","Bleu","Violet","Vert","Gris"].map(name =>
       [name,palette.find(([label])=>label===name)[1],name.toLowerCase()]),
   ];
@@ -1129,6 +1144,66 @@
       }
     }
   }
+  const tagDialog = $("exploreTagDialog");
+  const durationTargets = new WeakMap();
+  const durationQueue = [];
+  let activeProbes = 0;
+  function runDurationQueue(){
+    while(activeProbes < 3 && durationQueue.length){
+      const [file,node] = durationQueue.shift();
+      if(!node.isConnected)continue;
+      if(!file.durationRequest){
+        activeProbes++;
+        file.durationRequest = api("/api/probe?path="+qs(file.path))
+          .then(info=>info.duration>0 ? fmtTime(info.duration) : "—")
+          .catch(()=>"—")
+          .finally(()=>{activeProbes--;runDurationQueue()});
+      }
+      file.durationRequest.then(duration=>{node.textContent = duration;});
+    }
+  }
+  const durationObserver = typeof IntersectionObserver==="undefined" ? null :
+    new IntersectionObserver(entries=>{
+      for(const {target,isIntersecting} of entries){
+        if(!isIntersecting)continue;
+        durationObserver.unobserve(target);
+        durationQueue.push([durationTargets.get(target),target]);
+      }
+      runDurationQueue();
+    });
+  function observeDuration(file,node){
+    if(file.durationRequest){
+      file.durationRequest.then(duration=>{node.textContent = duration;});
+    }else if(durationObserver){
+      durationTargets.set(node,file);
+      durationObserver.observe(node);
+    }else{
+      durationQueue.push([file,node]);
+      runDurationQueue();
+    }
+  }
+  function exploreColorDot(color){
+    const dot = exploreElement("span",null,"exploreTagDot");
+    if(color)dot.style.setProperty("--tag-color",color);
+    dot.setAttribute("aria-hidden","true");
+    return dot;
+  }
+  function openExploreTags(file,trigger){
+    const options = $("exploreTagOptions");
+    options.replaceChildren();
+    for(const [index,[name,color]] of exploreColors.entries()){
+      const option = exploreElement("button",null,"smallbtn");
+      option.setAttribute("aria-pressed",String(index===file.label));
+      option.append(exploreColorDot(color),document.createTextNode(name));
+      option.onclick = ()=>{
+        tagDialog.close();
+        if(index!==file.label)recolorExplore(file,index,trigger);
+      };
+      options.append(option);
+    }
+    tagDialog.showModal();
+    options.querySelector('[aria-pressed="true"]').focus();
+  }
   function renderExploreGrid(){
     if(!exploreData)return;
     const grid = $("exploreGrid");
@@ -1136,6 +1211,7 @@
       (file.label!=null && String(file.label)===exploreFilter.value));
     $("exploreCount").textContent = visible.length.toLocaleString("fr-FR")+
       (visible.length===1 ? " vidéo" : " vidéos");
+    durationObserver?.disconnect();
     grid.replaceChildren();
     if(!visible.length && !exploreScan)
       grid.append(exploreElement("p","Aucune vidéo à afficher.","muted"));
@@ -1153,29 +1229,30 @@
       thumb.append(image,play);
       thumb.onclick = ()=>openExplorerVideo(file);
       const caption = exploreElement("div",null,"exploreCaption");
-      caption.append(exploreElement("strong",file.name));
-      const label = exploreElement("label"), dot = exploreElement("span",null,"dot");
-      const select = exploreElement("select");
-      select.setAttribute("aria-label","Pastille de "+file.name);
-      if(file.label==null){
-        select.add(new Option(exploreScan ? "Lecture…" : "Indisponible",""));
-        select.disabled = true;
-      }else{
-        for(const [index,[name]] of exploreColors.entries())select.add(new Option(name,index));
-        select.value = file.label;
-        dot.style.backgroundColor = exploreColors[file.label][1];
-        select.disabled = recoloring.has(file.path);
-        select.onchange = ()=>recolorExplore(file,Number(select.value),select);
-      }
-      label.append(dot,select);
-      caption.append(label);
+      const title = exploreElement("strong",file.name);
+      title.title = file.name;
+      const metadata = exploreElement("div",null,"exploreMeta");
+      const duration = exploreElement("span","…");
+      duration.setAttribute("aria-label","Durée");
+      metadata.append(document.createTextNode(fmtMegabytes(file.bytes)+" · "),duration);
+      const tag = exploreElement("button",null,"exploreTag");
+      const [name,color] = exploreColors[file.label] ||
+        [exploreScan ? "Lecture en cours" : "Indisponible"];
+      tag.setAttribute("aria-label","Pastille de "+file.name+" · "+name);
+      tag.setAttribute("aria-haspopup","dialog");
+      tag.title = name;
+      tag.disabled = file.label==null || recoloring.has(file.path);
+      tag.append(exploreColorDot(color));
+      tag.onclick = ()=>openExploreTags(file,tag);
+      caption.append(title,metadata,tag);
       card.append(thumb,caption);
       grid.append(card);
+      observeDuration(file,duration);
     }
   }
-  async function recolorExplore(file,label,select){
+  async function recolorExplore(file,label,trigger){
     recoloring.add(file.path);
-    select.disabled = true;
+    trigger.disabled = true;
     try{
       const {job_id} = await api("/api/explore/color",{method:"POST",body:JSON.stringify({
         path:file.path,color:exploreColors[label][2]
