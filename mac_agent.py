@@ -25,6 +25,7 @@ EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi",
               ".wmv", ".ts", ".mts", ".m2ts"}
 
 TAG_ATTRIBUTE = b"com.apple.metadata:_kMDItemUserTags"
+FINDER_INFO_ATTRIBUTE = b"com.apple.FinderInfo"
 # Indices de l’interface historiques, numéros des tags macOS et noms usuels.
 TAG_COLORS = {
     1: (7, "Orange", "Orange"),
@@ -90,17 +91,17 @@ def tag_xattr_function(name):
     return function
 
 
-def read_tag_attribute(path):
+def read_tag_attribute(path, attribute=TAG_ATTRIBUTE):
     getxattr = tag_xattr_function("getxattr")
     filename = os.fsencode(path)
-    size = getxattr(filename, TAG_ATTRIBUTE, None, 0, 0, XATTR_NOFOLLOW)
+    size = getxattr(filename, attribute, None, 0, 0, XATTR_NOFOLLOW)
     if size < 0:
         error = ctypes.get_errno()
         if error == errno.ENOATTR:
             return None
         raise OSError(error, os.strerror(error), path)
     buffer = ctypes.create_string_buffer(size)
-    size = getxattr(filename, TAG_ATTRIBUTE, buffer, size, 0, XATTR_NOFOLLOW)
+    size = getxattr(filename, attribute, buffer, size, 0, XATTR_NOFOLLOW)
     if size < 0:
         error = ctypes.get_errno()
         raise OSError(error, os.strerror(error), path)
@@ -144,7 +145,19 @@ def label_from_native_tags(raw):
 
 
 def native_finder_reader():
-    return lambda path: label_from_native_tags(read_tag_attribute(path))
+    def read(path):
+        label = label_from_native_tags(read_tag_attribute(path))
+        if label:
+            return label
+        info = read_tag_attribute(path, FINDER_INFO_ATTRIBUTE)
+        if info is None:
+            return 0
+        if len(info) != 32:
+            raise ValueError("attribut FinderInfo de taille inattendue")
+        number = (info[9] & 0x0E) >> 1  # Bits 1 à 3 des indicateurs Finder.
+        return LABEL_BY_TAG_NUMBER.get(number, 0)
+
+    return read
 
 
 def finder_labels(paths: list[Path]) -> list[int | None]:

@@ -80,3 +80,23 @@ def test_native_write_requires_verified_label(tmp_path):
          patch.object(agent, "write_tag_attribute", create=True):
         with pytest.raises(RuntimeError, match="attendu 2"):
             agent.apply_color(tmp_path / "film.mkv", 2)
+
+
+@pytest.mark.parametrize("tags", [None, plistlib.dumps(["Projet"])])
+def test_scan_recognizes_legacy_finder_color(tmp_path, monkeypatch, tags):
+    raw = bytearray(32)
+    raw[9] = 0x8D  # Rouge (0x0C), avec des indicateurs Finder indépendants.
+    attrs = {b"com.apple.metadata:_kMDItemUserTags": tags,
+             b"com.apple.FinderInfo": bytes(raw)}
+    monkeypatch.setattr(agent, "read_tag_attribute",
+                        lambda path, attr=agent.TAG_ATTRIBUTE: attrs[attr])
+    assert agent.finder_labels([tmp_path / "ancien.mkv"]) == [2]
+
+
+def test_scan_keeps_modern_color_when_present(tmp_path, monkeypatch):
+    def read(_path, attr=agent.TAG_ATTRIBUTE):
+        assert attr == agent.TAG_ATTRIBUTE
+        return plistlib.dumps(["Vert\n2"])
+
+    monkeypatch.setattr(agent, "read_tag_attribute", read)
+    assert agent.finder_labels([tmp_path / "moderne.mkv"]) == [6]
