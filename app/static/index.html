@@ -171,6 +171,8 @@
     .playerpanel .bar>*{flex:none;white-space:nowrap}
     .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
     .playerpanel .bar .swatch{width:30px}
+    .video-markers{display:flex;gap:5px}
+    .video-markers .smallbtn{padding:7px 8px;color:var(--cyan);font-size:12px;font-variant-numeric:tabular-nums}
     .viewNav,.exploreCrumbs,.exploreFolders,.exploreToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .viewNav [aria-current="page"]{color:var(--cyan);border-color:var(--cyan)}
     #explorePage{overflow:auto;flex:1;min-height:0}
@@ -322,6 +324,7 @@
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
             <div class="secondaryactions" role="group" aria-label="Classement de la vidéo">
             <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
+            <div class="video-markers" id="videoMarkers" role="group" aria-label="Repères vidéo" hidden></div>
 
             <button class="button" id="undoBtn" disabled>↶ Annuler</button>
             <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
@@ -744,7 +747,27 @@
   async function choose(color){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/color",{method:"POST",body:JSON.stringify({color})});await poll()}catch(err){notice(err.message)}}
   async function skip(){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/skip",{method:"POST"});await poll()}catch(err){notice(err.message)}}
   async function undo(){if(!state||!state.can_undo)return;try{await api("/api/sessions/"+qs(sessionId)+"/undo",{method:"POST"});await poll()}catch(err){notice(err.message)}}
+  function renderVideoMarkers(name=""){
+    const group=$("videoMarkers");
+    const stem=name.replace(/\.[^.]+$/,"");
+    const markers=stem.match(/(?:^|\.)(\d{2}-[0-5]\d(?:==\d{2}-[0-5]\d)*)$/)?.[1];
+    group.replaceChildren();
+    group.hidden=!markers;
+    if(!markers)return;
+    for(const marker of markers.split("==")){
+      const [minutes,seconds]=marker.split("-");
+      const target=Math.max(0,Number(minutes)*60+Number(seconds)-5);
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="smallbtn";
+      button.textContent=minutes+":"+seconds;
+      button.title="Aller à "+fmtTime(target);
+      button.onclick=()=>seekTo(target);
+      group.append(button);
+    }
+  }
   function stopVideo(){
+    renderVideoMarkers();
     $("fileName").classList.remove("video-title");
     video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
     activePath=null;duration=0;offset=0;$("clock").textContent="00:00 / 00:00";
@@ -759,6 +782,7 @@
   }
   async function loadVideo(item){
     stopVideo();activePath=item.path;fallbackAttempted=false;mode=/\.(mp4|m4v|mov)$/i.test(item.name)?"direct":"preview";
+    renderVideoMarkers(item.name);
     $("fileName").textContent=item.name;
     $("fileName").classList.add("video-title");
     const size = `<strong>${esc(fmtSize(item.bytes))}</strong>`;
@@ -852,7 +876,7 @@
     else if(e.key==="0"&&canAct()){e.preventDefault();choose("aucune")}
     else if(e.key.toLowerCase()==="s"&&canAct()){e.preventDefault();skip()}
     else if(e.key.toLowerCase()==="u"&&state?.can_undo){e.preventDefault();undo()}
-    else if(e.key===" "&&activePath){e.preventDefault();video.paused?video.play():video.pause()}
+    else if(e.key===" "&&activePath&&!document.activeElement?.closest("#videoMarkers")){e.preventDefault();video.paused?video.play():video.pause()}
     else if(e.key==="ArrowRight"&&activePath){e.preventDefault();seekTo(position()+10)}
     else if(e.key==="ArrowLeft"&&activePath){e.preventDefault();seekTo(position()-10)}
   });
