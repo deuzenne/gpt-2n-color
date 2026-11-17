@@ -164,7 +164,8 @@
     .calculationOverlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#101722d9;backdrop-filter:blur(5px);padding:20px;border-radius:inherit}
     .calculationCard{width:min(420px,100%);padding:27px;border:1px solid #3b566d;border-radius:18px;background:#172332;box-shadow:0 16px 55px #0006}
     .calculationCard>strong{font-size:18px}
-    .calculationCard p{color:var(--muted);font-size:13px;margin:10px 0 24px}
+    .calculationCard p{color:var(--muted);font-size:13px;margin:10px 0 12px}
+    #calculationFolder{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere;margin-bottom:14px}
     .calculationNumbers{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums}
     #calculationPercent{color:var(--cyan)}
     #calculationProgress{height:12px;margin:0;background:#29384a}
@@ -243,6 +244,7 @@
         <div class="calculationCard">
           <strong>Analyse de la bibliothèque</strong>
           <p id="calculationPhase" role="status" aria-live="polite">Inventaire des vidéos…</p>
+          <span id="calculationFolder" hidden></span>
           <div class="calculationNumbers"><span id="calculationCount">Recherche des fichiers</span><strong id="calculationPercent">…</strong></div>
           <div class="progress" id="calculationProgress" role="progressbar" aria-label="Progression du calcul des dossiers" aria-valuemin="0" aria-valuemax="100"><div></div></div>
         </div>
@@ -482,7 +484,9 @@
           status.textContent = unreadable ? `${unreadable} pastille(s) Finder illisible(s), hors comptage.` : "";
           return;
         }
-        status.textContent = `Lecture Finder · ${result.done} / ${result.total}`;
+        status.textContent = result.phase==="inventory" ? "Inventaire · "+inventoryCount(result) :
+          result.phase==="waiting" ? "En attente de l’agent Finder" :
+          `Lecture Finder · ${result.done} / ${result.total}`;
         await new Promise(resolve=>setTimeout(resolve,650));
       }
     } catch(err){
@@ -1028,12 +1032,27 @@
     }catch(error){notice(error.message)}
   }
   $("homeRootForm").onsubmit=event=>{event.preventDefault();loadHomeRoot($("homeRootInput").value.trim())};
-  function calculationProgress(done, total){
+  function inventoryCount({visited, total}){
+    return `${visited.toLocaleString("fr-FR")} dossier(s) parcouru(s) · ${total.toLocaleString("fr-FR")} vidéo(s) trouvée(s)`;
+  }
+  function calculationProgress({phase, status, done, total, current_folder, visited}){
+    const folder=$("calculationFolder");
+    folder.hidden=phase!=="inventory" || status==="ready";
+    if(!folder.hidden)folder.textContent=current_folder;
+    if(status!=="ready" && phase==="inventory"){
+      $("calculationCount").textContent=inventoryCount({visited,total});
+      return;
+    }
+    if(phase==="waiting"){
+      $("calculationPhase").textContent="En attente de l’agent Finder";
+      $("calculationCount").textContent=total.toLocaleString("fr-FR")+" vidéo(s) à vérifier";
+      return;
+    }
     const percent = total ? Math.min(100,Math.floor(done/total*100)) : 100;
     setProgressFill($("calculationProgress"), percent);
     $("calculationPercent").textContent=percent+" %";
     $("calculationCount").textContent=done.toLocaleString("fr-FR")+" / "+total.toLocaleString("fr-FR")+" vidéos";
-    $("calculationPhase").textContent="Lecture des pastilles Finder";
+    $("calculationPhase").textContent=status==="ready"?"Mise à jour de l’arborescence":"Lecture des pastilles Finder";
   }
   $("homeCalculate").onclick=async()=>{
     const revision=homeRevision;
@@ -1047,8 +1066,9 @@
     track.removeAttribute("aria-valuenow");
     track.firstElementChild.style.removeProperty("width");
     $("calculationPercent").textContent="…";
-    $("calculationCount").textContent="Recherche des fichiers";
-    $("calculationPhase").textContent="Inventaire des vidéos…";
+    $("calculationCount").textContent="Ouverture du dossier…";
+    $("calculationPhase").textContent="Parcours des dossiers à la recherche de vidéos";
+    $("calculationFolder").hidden=true;
     let id;
     try{
       $("homeStatus").textContent="Inventaire des vidéos…";
@@ -1057,9 +1077,8 @@
         const result=await api("/api/folder-counts/"+qs(id));
         if(revision!==homeRevision)return;
         if(result.status==="error")throw new Error(result.error);
-        calculationProgress(result.done,result.total);
+        calculationProgress(result);
         if(result.status==="ready"){
-          $("calculationPhase").textContent="Mise à jour de l’arborescence";
           homeInventory=result;homeFiltered=true;
           $("homeShowAll").hidden=false;
           const errors=Object.values(result.unreadable).reduce((a,b)=>a+b,0);
@@ -1067,7 +1086,7 @@
           await renderHomeBranch(homeRoot,$("homeTree"),revision);
           break;
         }
-        $("homeStatus").textContent="Lecture Finder · "+result.done+" / "+result.total;
+        $("homeStatus").textContent=$("calculationPhase").textContent;
         await new Promise(resolve=>setTimeout(resolve,650));
       }
     }catch(error){if(revision===homeRevision)$("homeStatus").textContent=error.message}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from functools import lru_cache
 import hmac
 import json
@@ -14,7 +15,7 @@ import time
 from typing import Literal
 from unicodedata import combining, normalize
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -145,7 +146,8 @@ def video_name_key(item: dict) -> tuple[str, str]:
     return "".join(letter for letter in name if not combining(letter)), item["path"].casefold()
 
 
-def enumerate_videos(folder: Path, recursive: bool) -> list[dict]:
+def enumerate_videos(folder: Path, recursive: bool,
+                     progress: Callable[[Path, int, int], None] | None = None) -> list[dict]:
     results = []
     def add(path):
         if path.is_symlink() or path.suffix.casefold() not in VIDEO_EXTENSIONS:
@@ -158,14 +160,19 @@ def enumerate_videos(folder: Path, recursive: bool) -> list[dict]:
             pass
 
     if recursive:
-        for current, subdirs, files in os.walk(folder, followlinks=False):
+        for visited, (current, subdirs, files) in enumerate(
+                os.walk(folder, followlinks=False), start=1):
             base = Path(current)
+            if progress:
+                progress(base, visited, len(results))
             subdirs[:] = sorted(d for d in subdirs if d not in SKIP_DIRS
                                 and not (base / d).is_symlink())
-            for filename in files:
+            for index, filename in enumerate(files, start=1):
                 add(base / filename)
                 if len(results) > 25000:
                     raise HTTPException(413, "Plus de 25 000 vidéos : choisir un sous-dossier")
+                if progress and index % 128 == 0:
+                    progress(base, visited, len(results))
     else:
         for item in folder.iterdir():
             add(item)
@@ -293,13 +300,53 @@ def release_explore_job(jid: str):
     return {"ok": True}
 
 
-@app.post("/api/folder-counts")
-def start_folder_counts(req: SessionRequest):
-    folder = select_directory(req.directory)
-    videos = enumerate_videos(folder, recursive=True)
+def prepare_folder_counts(sid: str, folder: Path) -> None:
+    last_report = 0.0
+
+    def report(current: Path, visited: int, found: int) -> None:
+        nonlocal last_report
+        now = time.monotonic()
+        if now - last_report < 0.25:
+            return
+        last_report = now
+        with lock:
+            scan = folder_scans.get(sid)
+            if scan is not None:
+                scan.update(current_folder=display_path(current), visited=visited,
+                            total=found, updated=time.time())
+
+    try:
+        videos = enumerate_videos(folder, recursive=True, progress=report)
+    except (HTTPException, OSError) as exc:
+        with lock:
+            scan = folder_scans.get(sid)
+            if scan is not None:
+                message = exc.detail if isinstance(exc, HTTPException) else "Impossible de parcourir les dossiers."
+                scan.update(status="error", error=message, updated=time.time())
+        return
+
     files = [video["path"] for video in videos]
-    if len(files) > 25000:
-        raise HTTPException(413, "Plus de 25 000 vidéos : choisir un sous-dossier")
+    with lock:
+        scan = folder_scans.get(sid)
+        if scan is None:
+            return
+        now = time.time()
+        scan.update(total=len(files), updated=now)
+        if not files:
+            scan["status"] = "ready"
+        elif now - last_agent_seen >= 45:
+            scan.update(status="error", error="Finder est déconnecté. Réessaie quand l’agent est connecté.")
+        else:
+            scan["phase"] = "waiting"
+            scan["job_id"] = create_job(
+                "scan", sid, files=files, folder_count=True,
+                sizes=[video["bytes"] for video in videos],
+            )
+
+
+@app.post("/api/folder-counts")
+def start_folder_counts(req: SessionRequest, background_tasks: BackgroundTasks):
+    folder = select_directory(req.directory)
     sid = secrets.token_urlsafe(12)
     with lock:
         now = time.time()
@@ -307,18 +354,14 @@ def start_folder_counts(req: SessionRequest):
             if now - scan["updated"] > 120:
                 folder_scans.pop(key)
                 jobs.pop(scan.get("job_id"), None)
-        if files and now - last_agent_seen >= 45:
-            raise HTTPException(503, "Finder est déconnecté. Réessaie quand l’agent est connecté.")
         if len(folder_scans) >= 12:
             raise HTTPException(429, "Trop de comptages en cours. Réessaie dans un instant.")
-        scan = {"status": "scanning" if files else "ready", "counts": {},
-                "uncolored_bytes": {}, "unreadable": {}, "updated": now, "total": len(files), "done": 0}
-        folder_scans[sid] = scan
-        if files:
-            scan["job_id"] = create_job(
-                "scan", sid, files=files, folder_count=True,
-                sizes=[video["bytes"] for video in videos],
-            )
+        folder_scans[sid] = {
+            "status": "scanning", "phase": "inventory", "counts": {},
+            "uncolored_bytes": {}, "unreadable": {}, "updated": now,
+            "total": 0, "done": 0, "visited": 0, "current_folder": display_path(folder),
+        }
+    background_tasks.add_task(prepare_folder_counts, sid, folder)
     return {"id": sid}
 
 
@@ -329,7 +372,9 @@ def folder_counts(sid: str):
         if not scan:
             raise HTTPException(404, "Comptage expiré")
         if scan["status"] == "scanning" and time.time() - scan["updated"] >= 120:
-            raise HTTPException(503, "Finder ne répond plus. Relance le filtre.")
+            message = ("Le parcours des dossiers ne répond plus." if scan["phase"] == "inventory"
+                       else "Finder ne répond plus.")
+            raise HTTPException(503, message + " Relance le filtre.")
         return {key: value for key, value in scan.items() if key not in {"updated", "job_id"}}
 
 
@@ -486,6 +531,8 @@ def agent_next(x_agent_token: str | None = Header(default=None)):
                 jobs.pop(jid, None)
                 continue
             job["status"] = "running"
+            if job.get("folder_count"):
+                folder_scans[job["session_id"]].update(phase="finder", updated=time.time())
             return {key: value for key, value in job.items()
                     if key not in {"created", "status", "sizes"}}
     return {"job": None}

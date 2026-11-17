@@ -1,7 +1,9 @@
 """Tests de non-régression 2N Color : aucun Finder ni FFmpeg réel."""
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import os
 import subprocess
+from threading import Event
 from unittest.mock import patch
 
 import pytest
@@ -331,12 +333,44 @@ def test_folder_counts_include_only_uncolored_video_bytes(env):
     client.get("/api/agent/next", headers=headers)
     started = client.post("/api/folder-counts", json={"directory": ""})
     assert started.status_code == 200
+    url = "/api/folder-counts/" + started.json()["id"]
+    assert client.get(url).json()["phase"] == "waiting"
     job = client.get("/api/agent/next", headers=headers).json()
+    assert client.get(url).json()["phase"] == "finder"
     scan_result(client, headers, job, [inventory[path][1] for path in job["files"]])
-    state = client.get("/api/folder-counts/" + started.json()["id"]).json()
+    state = client.get(url).json()
     assert state["counts"] == {"films": 1, "films/suite": 1}
     assert state["uncolored_bytes"] == {"films": 7, "films/suite": 3}
     assert state["unreadable"] == {"films/suite": 1}
+
+
+def test_folder_inventory_reports_progress_before_finder(env, monkeypatch):
+    root, client, headers = env
+    reported, resume = Event(), Event()
+
+    def slow_inventory(folder, recursive, progress):
+        progress(folder / "films", 3, 10)
+        reported.set()
+        assert resume.wait(timeout=5)
+        return []
+
+    monkeypatch.setattr(main, "enumerate_videos", slow_inventory)
+    with ThreadPoolExecutor() as executor:
+        started = executor.submit(client.post, "/api/folder-counts", json={"directory": ""})
+        try:
+            assert reported.wait(timeout=5)
+            with main.lock:
+                sid = next(iter(main.folder_scans))
+            state = client.get("/api/folder-counts/" + sid).json()
+            assert state["phase"] == "inventory"
+            assert state["visited"] == 3
+            assert state["total"] == 10
+            assert state["current_folder"] == str(root / "films")
+            assert client.get("/api/agent/next", headers=headers).json() == {"job": None}
+        finally:
+            resume.set()
+        assert started.result(timeout=5).json()["id"] == sid
+    assert client.get("/api/folder-counts/" + sid).json()["status"] == "ready"
 
 
 def test_exploration_browses_and_recolors_existing_videos(env):
