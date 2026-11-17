@@ -153,6 +153,7 @@
     .backToTree:hover{background:#254052;border-color:var(--cyan)}
     .classifyLocation{min-width:0}
     #classifyFolder{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+    .classifySort{margin-left:auto;flex:none;white-space:nowrap;font-size:12px;padding:5px 8px}
     @media(max-width:760px){
       #classifyPage{grid-template-columns:minmax(0,1fr)}
       #classifyPage>.main{grid-column:1;grid-row:1}
@@ -308,6 +309,7 @@
           <div class="classifyHeading">
             <button type="button" id="homeBack" class="backToTree" aria-label="Retour à l’arborescence" title="Retour à l’arborescence">↑</button>
             <div class="classifyLocation" id="classifyFolder"></div>
+            <button type="button" id="sortVideos" class="smallbtn classifySort" disabled>Tri : taille ↓</button>
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
@@ -315,7 +317,7 @@
           </div>
           <div class="videozone">
             <video id="player" playsinline controls preload="metadata"></video>
-            <div class="placeholder" id="placeholder"><div class="glyph">▶</div><strong>Aucune vidéo chargée</strong><span>Le lecteur s'ouvrira sur la plus volumineuse sans couleur Finder.</span></div>
+            <div class="placeholder" id="placeholder"><div class="glyph">▶</div><strong>Aucune vidéo chargée</strong><span>Le lecteur s'ouvrira sur la première vidéo sans couleur Finder selon le tri choisi.</span></div>
           </div>
           <div class="bar">
             <button class="smallbtn" id="rewind30Btn" title="Reculer de 30 secondes">−30 s</button>
@@ -366,6 +368,7 @@
   const $ = (id) => document.getElementById(id);
   const palette = [["Rouge","#e45d65"],["Violet","#af81ee"],["Vert","#4bc99d"],["Bleu","#689df7"],["Gris","#919cab"],["Jaune","#e7c965"],["Orange","#efa66c"]];
   let directory = "", sessionId = null, state = null, activePath = null;
+  let actionPending = false, actionRevision = 0;
   let browsing = false;
   let folderVideoCount = null, folderHasSubdirs = false;
   let mode = "direct", duration = 0, offset = 0, speed = 1, fallbackAttempted = false, pollBusy = false;
@@ -642,7 +645,7 @@
       btn.dataset.color=name.toLowerCase();btn.onclick=()=>choose(name.toLowerCase());area.appendChild(btn);
     }
   }
-  function canAct(){return state&&state.status==="ready"&&state.current&&!state.busy}
+  function canAct(){return !actionPending && state?.status==="ready" && state.current && !state.busy}
   function updateScanButton(){
     const recursive = $("recursive").checked;
     const emptyFolder = folderVideoCount === 0 && (!recursive || !folderHasSubdirs);
@@ -655,7 +658,12 @@
     updateScanButton();
     for(const node of $("palette").children)node.disabled=!canAct();
     $("noneBtn").disabled=$("skipBtn").disabled=!canAct();
-    $("undoBtn").disabled=!(state&&state.can_undo);
+    $("undoBtn").disabled=actionPending || !state?.can_undo;
+    const sort=$("sortVideos");
+    const alphabetical=state?.order==="name";
+    sort.textContent=alphabetical?"Tri : A → Z":"Tri : taille ↓";
+    sort.title=alphabetical?"Trier par taille décroissante":"Trier par nom de fichier, de A à Z";
+    sort.disabled=!canAct() || state.queue_size<2;
   }
   function setProgressFill(track, percent){
     track.firstElementChild.style.width = percent + "%";
@@ -682,20 +690,21 @@
       if(!direct && !(await browse(selected,{refreshCounts:false})))return;
       sessionId=null;state=null;activePath=null;stopVideo();
       setProgress(0);
-      updateScanButton();
+      buttons();
       const s=await api("/api/sessions",{method:"POST",body:JSON.stringify({directory,recursive:direct ? false : $("recursive").checked})});
       if(!$("explorePage").hidden)return;
       sessionId=s.id;await poll();
     }catch(err){notice(err.message,6500)}
     finally{$("scanBtn").disabled=false}
   }
-  async function poll(){
-    if(!sessionId||pollBusy)return;
-    pollBusy=true;
+  async function poll(snapshot=null){
+    if(!sessionId || actionPending || (!snapshot && pollBusy))return;
+    if(!snapshot)pollBusy=true;
     try{
       const requested = sessionId;
-      const s=await api("/api/sessions/"+qs(requested));
-      if(requested!==sessionId)return;
+      const revision = actionRevision;
+      const s=snapshot ?? await api("/api/sessions/"+qs(requested));
+      if(requested!==sessionId || revision!==actionRevision)return;
       state=s;
       if(homeInventory && !s.recursive && s.status==="ready"){
         homeInventory.counts[s.directory]=Math.max(0,s.total_files-s.colored_count-s.classified-s.scan_errors);
@@ -743,11 +752,29 @@
         $("placeholder").innerHTML='<div class="glyph">✓</div><strong>Session terminée</strong><span>Tu peux sélectionner un autre dossier.</span>';
       }
     }catch(err){notice(err.message,6000)}
-    finally{pollBusy=false}
+    finally{if(!snapshot)pollBusy=false}
   }
-  async function choose(color){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/color",{method:"POST",body:JSON.stringify({color})});await poll()}catch(err){notice(err.message)}}
-  async function skip(){if(!canAct())return;try{await api("/api/sessions/"+qs(sessionId)+"/skip",{method:"POST"});await poll()}catch(err){notice(err.message)}}
-  async function undo(){if(!state||!state.can_undo)return;try{await api("/api/sessions/"+qs(sessionId)+"/undo",{method:"POST"});await poll()}catch(err){notice(err.message)}}
+  async function sessionAction(action, payload){
+    const requested=sessionId;
+    actionPending=true;
+    actionRevision++;
+    buttons();
+    let snapshot;
+    try{
+      snapshot=await api("/api/sessions/"+qs(requested)+"/"+action,{method:"POST",body:JSON.stringify(payload)});
+    }catch(err){notice(err.message)}
+    finally{actionPending=false}
+    if(requested!==sessionId)return;
+    buttons();
+    await poll(snapshot);
+  }
+  function choose(color){if(canAct())return sessionAction("color",{color})}
+  function skip(){if(canAct())return sessionAction("skip")}
+  function undo(){if(!actionPending && state?.can_undo)return sessionAction("undo")}
+  $("sortVideos").onclick=()=>{
+    if(canAct() && state.queue_size>1)
+      return sessionAction("sort",{order:state.order==="name"?"size":"name"});
+  };
   function renderVideoMarkers(name=""){
     const group=$("videoMarkers");
     const stem=name.replace(/\.[^.]+$/,"");

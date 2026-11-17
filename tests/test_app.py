@@ -215,6 +215,34 @@ def test_skip_undo_and_none_are_not_finder_writes(env):
     assert back["none"] == 0
 
 
+def test_session_sort_reorders_only_unreviewed_videos(env):
+    root, client, headers = env
+    for name, size in [("a/z.mp4", 4), ("z/À.mp4", 1), ("b.mp4", 2), ("0.mp4", 8)]:
+        path = root / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b"x" * size)
+    sid, job = create_session(client, headers)
+    url = "/api/sessions/" + sid
+    scan_result(client, headers, job, [1, 0, 0, 0])
+    state = client.get(url).json()
+    assert state["order"] == "size"
+    assert state["current"]["path"] == "a/z.mp4"
+
+    state = client.post(url + "/sort", json={"order": "name"}).json()
+    assert state["current"]["path"] == "z/À.mp4"
+    state = client.post(url + "/skip").json()
+    assert state["current"]["path"] == "b.mp4"
+    state = client.post(url + "/sort", json={"order": "size"}).json()
+    assert state["current"]["path"] == "a/z.mp4"
+    assert state["queue_size"] == 2
+    assert state["skipped"] == 1
+    assert state["order"] == "size"
+
+    assert client.post(url + "/color", json={"color": "bleu"}).json()["busy"]
+    assert client.post(url + "/sort", json={"order": "name"}).status_code == 409
+    assert client.get(url).json()["current"]["path"] == "a/z.mp4"
+
+
 def test_color_undo_asks_finder_to_reset_to_zero(env):
     root, client, headers = env
     (root / "a.mp4").write_bytes(b"source")

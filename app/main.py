@@ -11,6 +11,8 @@ import secrets
 import subprocess
 import threading
 import time
+from typing import Literal
+from unicodedata import combining, normalize
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -44,6 +46,10 @@ class SessionRequest(BaseModel):
 
 class LabelRequest(BaseModel):
     color: str
+
+
+class SortRequest(BaseModel):
+    order: Literal["size", "name"]
 
 
 class ExploreLabelRequest(LabelRequest):
@@ -130,6 +136,15 @@ def display_path(path: Path) -> str:
 
 
 
+def video_size_key(item: dict) -> tuple[int, str]:
+    return -item["bytes"], item["path"].casefold()
+
+
+def video_name_key(item: dict) -> tuple[str, str]:
+    name = normalize("NFD", item["name"].casefold()).replace("œ", "oe").replace("æ", "ae")
+    return "".join(letter for letter in name if not combining(letter)), item["path"].casefold()
+
+
 def enumerate_videos(folder: Path, recursive: bool) -> list[dict]:
     results = []
     def add(path):
@@ -154,7 +169,7 @@ def enumerate_videos(folder: Path, recursive: bool) -> list[dict]:
     else:
         for item in folder.iterdir():
             add(item)
-    results.sort(key=lambda item: (-item["bytes"], item["path"].casefold()))
+    results.sort(key=video_size_key)
     return results
 
 
@@ -342,7 +357,7 @@ def start_session(req: SessionRequest):
     sid = secrets.token_urlsafe(12)
     with lock:
         session = {"id": sid, "directory": rel(folder),
-                   "recursive": req.recursive, "created": time.time(),
+                   "recursive": req.recursive, "created": time.time(), "order": "size",
                    "total_files": len(videos), "total_bytes": sum(v["bytes"] for v in videos),
                    "candidates": videos, "pending": [], "history": [],
                    "tagged": 0, "skipped": 0, "none": 0,
@@ -366,7 +381,7 @@ def view(session: dict) -> dict:
     skipped_bytes = sum(entry["item"]["bytes"] for entry in session["history"]
                         if entry["kind"] != "color")
     return {"id": session["id"], "directory": session["directory"],
-            "recursive": session["recursive"],
+            "recursive": session["recursive"], "order": session["order"],
             "status": session["status"], "total_files": session["total_files"],
             "total_bytes": session["total_bytes"], "scan_done": session["scan_done"],
             "scan_errors": session["scan_errors"],
@@ -385,6 +400,20 @@ def view(session: dict) -> dict:
 def session_state(sid: str):
     with lock:
         return view(get_session_or_404(sid))
+
+
+@app.post("/api/sessions/{sid}/sort")
+def sort_session(sid: str, req: SortRequest):
+    with lock:
+        s = get_session_or_404(sid)
+        if s["status"] != "ready" or s["busy"]:
+            raise HTTPException(409, "Le classement est occupé")
+        if req.order == "name":
+            s["pending"].sort(key=video_name_key)
+        else:
+            s["pending"].sort(key=video_size_key)
+        s["order"] = req.order
+        return view(s)
 
 
 @app.post("/api/sessions/{sid}/color")
