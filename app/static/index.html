@@ -171,7 +171,9 @@
     .playerpanel .bar>*{flex:none;white-space:nowrap}
     .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
     .playerpanel .bar .swatch{width:30px}
-    .video-markers{display:flex;gap:5px}
+    .playerpanel .bar:has(.video-markers:not([hidden])){flex-wrap:wrap}
+    .playerpanel .bar:has(.video-markers:not([hidden])) .secondaryactions{flex-wrap:wrap;max-width:100%}
+    .video-markers{display:flex;flex-wrap:wrap;gap:5px}
     .video-markers .smallbtn{padding:7px 8px;color:var(--cyan);font-size:12px;font-variant-numeric:tabular-nums}
     .viewNav,.exploreCrumbs,.exploreFolders,.exploreToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .viewNav [aria-current="page"]{color:var(--cyan);border-color:var(--cyan)}
@@ -323,12 +325,11 @@
             <span class="timer" id="clock">00:00 / 00:00</span>
             <button class="smallbtn speed" id="speedBtn" title="Changer la vitesse">×1</button>
             <div class="secondaryactions" role="group" aria-label="Classement de la vidéo">
-            <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
-            <div class="video-markers" id="videoMarkers" role="group" aria-label="Repères vidéo" hidden></div>
-
-            <button class="button" id="undoBtn" disabled>↶ Annuler</button>
-            <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
-            <button class="button" id="skipBtn" disabled>Passer →</button>
+              <div class="palette" id="palette" role="group" aria-label="Attribuer une couleur Finder"></div>
+              <button class="button" id="undoBtn" disabled>↶ Annuler</button>
+              <button class="button" id="noneBtn" disabled>◌ Aucune couleur</button>
+              <button class="button" id="skipBtn" disabled>Passer →</button>
+              <div class="video-markers" id="videoMarkers" role="group" aria-label="Repères vidéo" hidden></div>
             </div>
           </div>
           <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
