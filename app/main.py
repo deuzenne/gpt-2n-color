@@ -690,5 +690,14 @@ def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, 
                                       "X-Content-Type-Options": "nosniff"})
 
 
-app.mount("/", StaticFiles(directory=str(Path(__file__).parent / "static"),
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/")
+@app.get("/index.html")
+def web_index():
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"})
+
+
+app.mount("/", StaticFiles(directory=str(STATIC_DIR),
                            html=True), name="web")

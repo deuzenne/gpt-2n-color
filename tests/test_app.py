@@ -46,6 +46,17 @@ def test_health_reports_packaged_version(env):
     assert "COPY VERSION ." in Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text()
 
 
+@pytest.mark.parametrize("url", ["/", "/index.html?reload=123"])
+def test_web_index_disables_caching(env, url):
+    _, client, _ = env
+    first = client.get(url)
+    response = client.get(url, headers={"If-None-Match": first.headers["etag"]})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("text/html")
+    assert 'id="reloadApp"' in response.text
+
+
 def test_tree_navigation_and_path_safety(env):
     root, client, headers = env
     (root / "vacances").mkdir()

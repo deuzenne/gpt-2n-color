@@ -222,6 +222,7 @@
       <nav class="viewNav" aria-label="Vues">
         <button class="smallbtn" id="openLibrary" type="button" aria-current="page">Bibliothèque</button>
         <button class="smallbtn" id="openExploration" type="button">Exploration</button>
+        <button class="smallbtn" id="reloadApp" type="button" title="Charger la version déployée dans Colima">↻ Recharger l’application</button>
       </nav>
       <div class="topstatus"><span class="status"><span id="agentDot" class="dot"></span><span id="agentText">Finder : connexion…</span></span><span class="status" id="version">V1</span>
         <time class="status localTime" id="localTime" title="Heure locale">—</time>
@@ -384,8 +385,13 @@
     return res.json();
   }
   const qs=(x)=>encodeURIComponent(x);
+  $("reloadApp").onclick=()=>{
+    const url=new URL(window.location.href);
+    url.searchParams.set("reload",String(Date.now()));
+    window.location.replace(url.href);
+  };
   async function health(){
-    try {const h=await api("/api/health");$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
+    try {const h=await api("/api/health",{cache:"no-store"});$("version").textContent=h.version;$("agentDot").classList.toggle("online",h.agent_online);$("agentText").textContent=h.agent_online?"Finder connecté":"Finder non connecté"; }
     catch{$("agentText").textContent="Serveur indisponible";$("agentDot").classList.remove("online")}
   }
   const lastDirectoryKey = "2n-color.last-directory";
