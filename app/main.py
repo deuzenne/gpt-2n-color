@@ -710,11 +710,13 @@ def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, 
         raise HTTPException(415, "Extension non vidéo")
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
                "-ss", str(start), "-i", str(target),
-               "-map", "0:v:0", "-map", "0:a:0?",
+               "-map", "0:V:0", "-map", "0:a:0?",
                "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k",
+               "-tune", "zerolatency", "-force_key_frames", "expr:gte(t,n_forced*1)",
+               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ac", "2",
                "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+               "-frag_duration", "1000000",
                "-f", "mp4", "pipe:1"]
 
     def chunks():

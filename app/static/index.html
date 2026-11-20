@@ -313,6 +313,7 @@
             <button type="button" id="homeBack" class="backToTree" aria-label="Retour à l’arborescence" title="Retour à l’arborescence">↑</button>
             <div class="classifyLocation" id="classifyFolder"></div>
             <button type="button" id="sortVideos" class="smallbtn classifySort" disabled>Tri : taille ↓</button>
+            <button type="button" id="compatiblePlayback" class="smallbtn" disabled title="Relancer avec une conversion compatible avec le navigateur">Lecture compatible</button>
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
@@ -361,6 +362,7 @@
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
       <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
       <video id="explorePlayer" controls playsinline></video>
+      <button type="button" id="exploreCompatiblePlayback" class="smallbtn">Lecture compatible</button>
       <p id="explorePlayerStatus" class="muted" role="status" hidden></p>
     </dialog>
     <footer class="foot">2N Color · Tri local sans suppression ni conversion permanente · Le dossier est monté en lecture seule dans Colima.</footer>
@@ -803,6 +805,7 @@
     group.hidden=!group.childElementCount;
   }
   function stopVideo(){
+    $("compatiblePlayback").disabled=true;
     renderVideoMarkers();
     $("fileName").classList.remove("video-title");
     video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
@@ -812,20 +815,21 @@
   function startPreview(start=0){
     if(!activePath)return;
     mode="preview";offset=Math.max(0,start);fallbackAttempted=true;
-    $("playMode").textContent="APERÇU FFMPEG";
+    $("playMode").textContent="LECTURE COMPATIBLE";
     video.pause();video.src=videoUrl(activePath,offset);video.load();
     video.play().catch(()=>{});
   }
   async function loadVideo(item){
     stopVideo();activePath=item.path;fallbackAttempted=false;mode=/\.(mp4|m4v|mov)$/i.test(item.name)?"direct":"preview";
     renderVideoMarkers(item.name);
+    $("compatiblePlayback").disabled=false;
     $("fileName").textContent=item.name;
     $("fileName").classList.add("video-title");
     const size = `<strong>${esc(fmtSize(item.bytes))}</strong>`;
     const path = esc(item.path);
     $("fileDetails").innerHTML=`${size} · ${path}`;
     $("placeholder").style.display="none";video.classList.add("visible");
-    $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"APERÇU FFMPEG";
+    $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"LECTURE COMPATIBLE";
     video.src=mode==="direct"?`/api/video?path=${qs(item.path)}`:videoUrl(item.path);
     video.load();video.playbackRate=speed;video.play().catch(()=>{});
     try{
@@ -848,9 +852,14 @@
     updateClock();
   }
   video.addEventListener("timeupdate",updateClock);
+  $("compatiblePlayback").onclick=()=>startPreview(position());
   video.addEventListener("error",()=>{
-    if(activePath&&mode==="direct"&&!fallbackAttempted){notice("Codec non lisible directement : aperçu FFmpeg");startPreview(0)}
-    else if(activePath&&mode==="preview")$("playHelp").textContent="Aperçu indisponible pour cette vidéo. Le fichier original reste intact.";
+    if(activePath&&mode==="direct"&&!fallbackAttempted){
+      notice("Passage en lecture compatible");
+      startPreview(position());
+    }else if(activePath&&mode==="preview"){
+      notice("Lecture compatible interrompue. Clique sur « Lecture compatible » pour réessayer.",6500);
+    }
   });
   video.addEventListener("loadedmetadata",()=>{if(!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
   video.addEventListener("canplay",()=>{video.playbackRate=speed});
@@ -1415,6 +1424,12 @@
     explorerDialog.showModal();
     startExplorerVideo(explorerFallback ? videoUrl(file.path) : "/api/video?path="+qs(file.path));
   }
+  $("exploreCompatiblePlayback").onclick=()=>{
+    if(!explorerFile)return;
+    explorerFallback=true;
+    $("explorePlayerStatus").hidden=true;
+    startExplorerVideo(videoUrl(explorerFile.path));
+  };
   explorerVideo.onerror = ()=>{
     if(!explorerFile)return;
     if(!explorerFallback){
