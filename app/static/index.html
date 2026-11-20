@@ -174,12 +174,11 @@
     .calculationNumbers{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin-bottom:10px;font-variant-numeric:tabular-nums}
     #calculationPercent{color:var(--cyan)}
     #calculationProgress{height:12px;margin:0;background:#29384a}
-    .playerpanel .bar{flex-wrap:nowrap;gap:5px;overflow-x:auto;padding:4px}
+    .playerpanel .bar{flex-wrap:wrap;gap:5px;overflow-x:auto;padding:4px}
     .playerpanel .bar>*{flex:none;white-space:nowrap}
-    .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px}
+    .playerpanel .bar .secondaryactions{margin:0;overflow:visible;gap:5px;flex-wrap:wrap;max-width:100%}
+    .playerpanel .bar #compatiblePlayback{margin-left:auto}
     .playerpanel .bar .swatch{width:30px}
-    .playerpanel .bar:has(.video-markers:not([hidden])){flex-wrap:wrap}
-    .playerpanel .bar:has(.video-markers:not([hidden])) .secondaryactions{flex-wrap:wrap;max-width:100%}
     .video-markers{display:flex;flex-wrap:wrap;gap:5px}
     .video-markers .smallbtn{padding:7px 8px;color:var(--cyan);font-size:12px;font-variant-numeric:tabular-nums}
     .viewNav,.exploreCrumbs,.exploreFolders,.exploreToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -321,7 +320,6 @@
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
-            <button type="button" class="mode playbackMode" id="compatiblePlayback" disabled aria-pressed="false" title="Activer la lecture compatible, même si le son fonctionne"><span>Lecture compatible</span><span aria-hidden="true"> ↻</span></button>
           </div>
           <div class="videozone">
             <video id="player" playsinline controls preload="metadata"></video>
@@ -342,6 +340,7 @@
               <button class="button" id="skipBtn" disabled>Passer →</button>
               <div class="video-markers" id="videoMarkers" role="group" aria-label="Repères vidéo" hidden></div>
             </div>
+            <button type="button" class="mode playbackMode" id="compatiblePlayback" disabled aria-pressed="false" title="Activer la lecture compatible, même si le son fonctionne"><span>Lecture compatible</span><span aria-hidden="true"> ↻</span></button>
           </div>
           <div class="message" id="playHelp">La lecture directe est utilisée lorsque le navigateur la prend en charge. Sinon, FFmpeg produit un aperçu temporaire sans modifier la vidéo.</div>
           <p class="message">Raccourcis : <b>1–7</b> couleurs, <b>0</b> aucune, <b>S</b> passer, <b>U</b> annuler, <b>Espace</b> pause, <b>←/→</b> reculer/avancer. Une couleur rouge ne supprime jamais la vidéo.</p>
