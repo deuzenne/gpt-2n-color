@@ -78,6 +78,7 @@
     .playbackMode{border:1px solid var(--line);font:inherit;font-size:11px;flex:none;white-space:nowrap;cursor:pointer}
     .playbackMode:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
     .playbackMode:disabled{opacity:.5;cursor:default}
+    .playbackStatus{flex:none;margin:6px 0;color:var(--cyan);font-size:12px;max-height:4em;overflow:auto;overflow-wrap:anywhere}
     .palette{display:flex;flex-wrap:wrap;gap:5px}
     .swatch{border:1px solid var(--line);background:#131a27;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:3px;width:36px;height:34px;padding:0}
     .swatch:hover:not(:disabled){background:var(--surface2);border-color:var(--cyan)}
@@ -325,6 +326,7 @@
             <video id="player" playsinline controls preload="metadata"></video>
             <div class="placeholder" id="placeholder"><div class="glyph">▶</div><strong>Aucune vidéo chargée</strong><span>Le lecteur s'ouvrira sur la première vidéo sans couleur Finder selon le tri choisi.</span></div>
           </div>
+          <p id="playbackStatus" class="playbackStatus" role="status" hidden></p>
           <div class="bar">
             <button class="smallbtn" id="rewind30Btn" title="Reculer de 30 secondes">−30 s</button>
             <button class="smallbtn" id="rewindBtn" title="Reculer de 10 secondes">−10 s</button>
@@ -364,7 +366,7 @@
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
       <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><button type="button" id="exploreCompatiblePlayback" class="mode playbackMode" title="Activer ou relancer la lecture compatible">Lecture compatible ↻</button><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
       <video id="explorePlayer" controls playsinline></video>
-      <p id="explorePlayerStatus" class="muted" role="status" hidden></p>
+      <p id="explorePlayerStatus" class="playbackStatus" role="status" hidden></p>
     </dialog>
     <footer class="foot">2N Color · Tri local sans suppression ni conversion permanente · Le dossier est monté en lecture seule dans Colima.</footer>
   </div>
@@ -837,30 +839,56 @@
   }
   function stopVideo(){
     $("compatiblePlayback").disabled=true;
+    playbackRevisions.set(video, (playbackRevisions.get(video)||0)+1);
+    $("playbackStatus").hidden=true;
     renderVideoMarkers();
     $("fileName").classList.remove("video-title");
     video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
     activePath=null;duration=0;offset=0;$("clock").textContent="00:00 / 00:00";
   }
-  let previewRequest=0;
-  function videoUrl(path,start=0){return `/api/preview?path=${qs(path)}&start=${start.toFixed(1)}&request=${++previewRequest}`}
+  const playbackRevisions=new WeakMap();
+  let previewMore=false, previewNext=0;
+  function playbackStatus(player,text=""){
+    const status=$(player===video?"playbackStatus":"explorePlayerStatus");
+    status.textContent=text;
+    status.hidden=!text;
+  }
   function playMedia(player){
+    const revision=playbackRevisions.get(player);
     player.play().catch(error=>{
-      if(error.name==="AbortError")return;
+      if(error.name==="AbortError" || revision!==playbackRevisions.get(player))return;
       if(error.name==="NotAllowedError"){
-        notice("Clique sur ▶ dans le lecteur pour démarrer la vidéo.",6500);
+        playbackStatus(player,"Clique sur ▶ dans le lecteur pour démarrer la vidéo.");
       }else{
-        notice("Le lecteur ne parvient pas à ouvrir cette vidéo. Consulte les logs de l’application pour le détail.",6500);
+        playbackStatus(player,"Le navigateur ne parvient pas à lire la vidéo préparée.");
       }
     });
   }
-  function startPreview(start=0){
+  async function prepareCompatible(player,path,start){
+    const revision=(playbackRevisions.get(player)||0)+1;
+    playbackRevisions.set(player,revision);
+    player.pause();player.removeAttribute("src");player.load();
+    playbackStatus(player,"Préparation de la lecture compatible…");
+    try{
+      const prepared=await api("/api/preview/prepare?path="+qs(path)+"&start="+start.toFixed(1),{method:"POST"});
+      if(revision!==playbackRevisions.get(player))return;
+      player.src=prepared.url;
+      player.load();
+      playMedia(player);
+      return prepared;
+    }catch(error){
+      if(revision===playbackRevisions.get(player))playbackStatus(player,error.message);
+    }
+  }
+  async function startPreview(start=0){
     if(!activePath)return;
-    mode="preview";offset=Math.max(0,start);fallbackAttempted=true;
-    $("playMode").textContent="Préparation…";
-    video.pause();video.removeAttribute("src");video.load();
-    video.src=videoUrl(activePath,offset);video.load();
-    playMedia(video);
+    mode="preview";offset=Math.max(0,start);fallbackAttempted=true;previewMore=false;
+    $("playMode").textContent="Lecture compatible";
+    const prepared=await prepareCompatible(video,activePath,offset);
+    if(prepared){
+      previewMore=prepared.more;
+      previewNext=prepared.start+prepared.length;
+    }
   }
   async function loadVideo(item){
     stopVideo();activePath=item.path;fallbackAttempted=false;mode=/\.(mp4|m4v|mov)$/i.test(item.name)?"direct":"preview";
@@ -873,8 +901,12 @@
     $("fileDetails").innerHTML=`${size} · ${path}`;
     $("placeholder").style.display="none";video.classList.add("visible");
     $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"LECTURE COMPATIBLE";
-    video.src=mode==="direct"?`/api/video?path=${qs(item.path)}`:videoUrl(item.path);
-    video.load();video.playbackRate=speed;playMedia(video);
+    if(mode==="preview"){
+      startPreview(0);
+    }else{
+      video.src=`/api/video?path=${qs(item.path)}`;
+      video.load();video.playbackRate=speed;playMedia(video);
+    }
     try{
       const info=await api("/api/probe?path="+qs(item.path));
       if(activePath!==item.path)return;
@@ -898,14 +930,18 @@
   $("compatiblePlayback").onclick=()=>startPreview(position());
   video.addEventListener("error",()=>{
     if(activePath&&mode==="direct"&&!fallbackAttempted){
-      notice("Passage en lecture compatible");
       startPreview(position());
     }else if(activePath&&mode==="preview"){
-      notice("Lecture compatible interrompue. Clique sur « Lecture compatible » pour réessayer.",6500);
+      playbackStatus(video,"Lecture interrompue. Relance avec ↻ en haut à droite du lecteur.");
     }
   });
-  video.addEventListener("loadedmetadata",()=>{if(!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
+  video.addEventListener("loadedmetadata",()=>{if(mode==="direct"&&!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
+  video.addEventListener("ended",()=>{
+    if(activePath && mode==="preview" && previewMore && (!duration || previewNext<duration-0.1))
+      startPreview(previewNext);
+  });
   video.addEventListener("canplay",()=>{
+    playbackStatus(video);
     video.playbackRate=speed;
     $("playMode").textContent=mode==="preview"?"Lecture compatible":"Lecture directe";
   });
@@ -1178,6 +1214,7 @@
   const explorerDialog = $("explorePlayerDialog"), explorerVideo = $("explorePlayer");
   let exploreData = null, explorePath = "", exploreRevision = 0, exploreScan = null;
   let explorerFile = null, explorerFallback = false, libraryDirty = false;
+  let explorerOffset=0, explorerMore=false, explorerNext=0;
   const recoloring = new Set();
   for(const [index,[label]] of exploreColors.entries())exploreFilter.add(new Option(label,index));
 
@@ -1466,31 +1503,45 @@
     explorerVideo.load();
     playMedia(explorerVideo);
   }
+  async function startExplorerCompatible(start=0){
+    if(!explorerFile)return;
+    explorerFallback=true;explorerOffset=start;explorerMore=false;
+    const prepared=await prepareCompatible(explorerVideo,explorerFile.path,start);
+    if(prepared){
+      explorerMore=prepared.more;
+      explorerNext=prepared.start+prepared.length;
+    }
+  }
   function openExplorerVideo(file){
     explorerFile = file;
     explorerFallback = !/\.(mp4|m4v|mov)$/i.test(file.name);
     $("explorePlayerTitle").textContent = file.name;
     $("explorePlayerStatus").hidden = true;
     explorerDialog.showModal();
-    startExplorerVideo(explorerFallback ? videoUrl(file.path) : "/api/video?path="+qs(file.path));
+    explorerOffset=0;
+    if(explorerFallback)startExplorerCompatible();
+    else startExplorerVideo("/api/video?path="+qs(file.path));
   }
   $("exploreCompatiblePlayback").onclick=()=>{
     if(!explorerFile)return;
-    explorerFallback=true;
-    $("explorePlayerStatus").hidden=true;
-    startExplorerVideo(videoUrl(explorerFile.path));
+    const current=Number.isFinite(explorerVideo.currentTime)?explorerVideo.currentTime:0;
+    startExplorerCompatible((explorerFallback?explorerOffset:0)+current);
   };
   explorerVideo.onerror = ()=>{
     if(!explorerFile)return;
     if(!explorerFallback){
-      explorerFallback = true;
-      startExplorerVideo(videoUrl(explorerFile.path));
+      startExplorerCompatible();
     }else{
       $("explorePlayerStatus").textContent = "Lecture indisponible pour cette vidéo.";
       $("explorePlayerStatus").hidden = false;
     }
   };
+  explorerVideo.addEventListener("canplay",()=>playbackStatus(explorerVideo));
+  explorerVideo.addEventListener("ended",()=>{
+    if(explorerFile && explorerFallback && explorerMore)startExplorerCompatible(explorerNext);
+  });
   explorerDialog.addEventListener("close",()=>{
+    playbackRevisions.set(explorerVideo,(playbackRevisions.get(explorerVideo)||0)+1);
     explorerFile = null;
     explorerVideo.pause();
     explorerVideo.removeAttribute("src");

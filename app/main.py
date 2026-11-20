@@ -6,7 +6,6 @@ from collections.abc import Callable
 from functools import lru_cache
 import hmac
 import json
-import logging
 import os
 from pathlib import Path, PurePosixPath
 import secrets
@@ -18,9 +17,10 @@ from typing import Literal
 from unicodedata import combining, normalize
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 ROOT = Path(os.environ.get("MEDIA_ROOT", "/library")).resolve()
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
@@ -40,6 +40,11 @@ jobs: dict[str, dict] = {}
 queue: deque[str] = deque()
 last_agent_seen = 0.0
 thumbnail_slots = threading.BoundedSemaphore(2)
+preview_slots = threading.BoundedSemaphore(2)
+preview_lock = threading.RLock()
+preview_cache: dict[str, dict] = {}
+PREVIEW_SECONDS = 30
+
 
 
 class SessionRequest(BaseModel):
@@ -705,47 +710,103 @@ def original_video(path: str = Query(...)):
                         headers={"Cache-Control": "no-store"})
 
 
-@app.get("/api/preview")
-def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, le=864000)):
+def prepare_preview(path: str, start: float) -> dict:
     target = resolve_path(path, directory=False)
     if target.suffix.casefold() not in VIDEO_EXTENSIONS:
         raise HTTPException(415, "Extension non vidéo")
-    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-               "-threads", "2", "-filter_threads", "1",
-               "-ss", str(start), "-i", str(target),
-               "-map", "0:V:0", "-map", "0:a:0?",
-               "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
-               "-c:v", "libx264", "-threads:v", "2", "-preset", "ultrafast", "-crf", "28",
-               "-tune", "zerolatency", "-force_key_frames", "expr:gte(t,n_forced*1)",
-               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ac", "2",
-               "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-               "-frag_duration", "1000000",
-               "-f", "mp4", "pipe:1"]
+    if not preview_slots.acquire(blocking=False):
+        raise HTTPException(429, "Deux vidéos sont déjà en préparation. Réessaie dans un instant.")
+    temporary = None
+    try:
+        with preview_lock:
+            for token, entry in list(preview_cache.items()):
+                if not entry["readers"] and time.monotonic() - entry["accessed"] > 120:
+                    entry["temporary"].cleanup()
+                    del preview_cache[token]
+            while len(preview_cache) >= 6:
+                available = [token for token, entry in preview_cache.items() if not entry["readers"]]
+                if not available:
+                    raise HTTPException(429, "Le cache de lecture est occupé. Réessaie dans un instant.")
+                token = min(available, key=lambda key: preview_cache[key]["accessed"])
+                preview_cache.pop(token)["temporary"].cleanup()
+        temporary = tempfile.TemporaryDirectory(prefix="2n-preview-")
+        output = Path(temporary.name) / "video.mp4"
+        command = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-threads", "2", "-filter_threads", "1", "-ss", str(start), "-i", str(target),
+            "-t", str(PREVIEW_SECONDS), "-map", "0:V:0", "-map", "0:a:0?",
+            "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
+            "-c:v", "libx264", "-threads:v", "2", "-preset", "ultrafast",
+            "-crf", "28", "-maxrate", "3M", "-bufsize", "6M",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ac", "2",
+            "-movflags", "+faststart", "-y", str(output),
+        ]
+        try:
+            subprocess.run(command, capture_output=True, check=True, timeout=90)
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=duration",
+                 "-of", "json", str(output)],
+                capture_output=True, text=True, check=True, timeout=10)
+            info = json.loads(probe.stdout)
+            length = float(info.get("format", {}).get("duration", 0))
+            if length <= 0:
+                raise ValueError("Aucune durée vidéo décodable à cette position")
+            if not any(stream.get("codec_type") == "video" for stream in info.get("streams", [])):
+                raise ValueError("Aucune image décodable à cette position")
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr or b""
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", errors="replace")
+            raise HTTPException(422, "FFmpeg ne peut pas préparer cette vidéo. " + detail.strip()[-1000:])
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "La préparation vidéo a dépassé le délai. Réessaie à une autre position.")
+        except (OSError, ValueError) as exc:
+            raise HTTPException(422, "Préparation vidéo impossible. " + str(exc))
+        token = secrets.token_urlsafe(18)
+        with preview_lock:
+            preview_cache[token] = {"temporary": temporary, "file": output,
+                                    "readers": 0, "accessed": time.monotonic()}
+        temporary = None
+        return {"url": "/api/preview/files/" + token, "start": start,
+                "length": min(length, PREVIEW_SECONDS),
+                "more": length >= PREVIEW_SECONDS - 0.25}
+    finally:
+        if temporary is not None:
+            temporary.cleanup()
+        preview_slots.release()
 
-    def chunks():
-        with tempfile.TemporaryFile() as errors:
-            proc = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                    stderr=errors, bufsize=0)
-            try:
-                while True:
-                    block = proc.stdout.read(128 * 1024)
-                    if not block:
-                        break
-                    yield block
-                if proc.wait() != 0:
-                    errors.seek(0)
-                    logging.getLogger(__name__).error(
-                        "Lecture compatible échouée pour %s : %s", path,
-                        errors.read(8192).decode("utf-8", errors="replace"))
-            finally:
-                if proc.poll() is None:
-                    proc.kill()
-                proc.wait(timeout=5)
-                proc.stdout.close()
 
-    return StreamingResponse(chunks(), media_type="video/mp4",
-                             headers={"Cache-Control": "no-store",
-                                      "X-Content-Type-Options": "nosniff"})
+@app.post("/api/preview/prepare")
+def prepare_video_preview(path: str = Query(...),
+                          start: float = Query(default=0, ge=0, le=864000)):
+    return prepare_preview(path, start)
+
+
+def release_preview(token: str) -> None:
+    with preview_lock:
+        entry = preview_cache.get(token)
+        if entry:
+            entry["readers"] -= 1
+            entry["accessed"] = time.monotonic()
+
+
+@app.get("/api/preview/files/{token}")
+def preview_file(token: str):
+    with preview_lock:
+        entry = preview_cache.get(token)
+        if entry is None:
+            raise HTTPException(404, "Aperçu expiré. Relance la lecture compatible.")
+        entry["readers"] += 1
+        entry["accessed"] = time.monotonic()
+        return FileResponse(entry["file"], media_type="video/mp4",
+                            headers={"Cache-Control": "no-store"},
+                            background=BackgroundTask(release_preview, token))
+
+
+@app.get("/api/preview")
+def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, le=864000)):
+    prepared = prepare_preview(path, start)
+    return preview_file(prepared["url"].rsplit("/", 1)[-1])
 
 
 STATIC_DIR = Path(__file__).parent / "static"

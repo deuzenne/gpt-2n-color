@@ -48,6 +48,56 @@ def test_health_reports_packaged_version(env):
     assert "COPY VERSION ." in Path(__file__).resolve().parents[1].joinpath("Dockerfile").read_text()
 
 
+def test_compatible_preview_serves_consistent_byte_ranges(env, monkeypatch):
+    root, client, _ = env
+    original = b"original video"
+    (root / "sample.mp4").write_bytes(original)
+    payload = b"compatible video data" * 20
+
+    def convert(command, **kwargs):
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(payload)
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        return subprocess.CompletedProcess(
+            command, 0, stdout='{"streams":[{"codec_type":"video"}],"format":{"duration":"30"}}',
+            stderr="")
+
+    monkeypatch.setattr(main.subprocess, "run", convert)
+    try:
+        prepared = client.post("/api/preview/prepare", params={"path": "sample.mp4", "start": 12}).json()
+        assert prepared["start"] == 12
+        assert prepared["more"]
+        url = prepared["url"]
+        for requested, expected in [("bytes=0-1", payload[:2]), ("bytes=-10", payload[-10:])]:
+            response = client.get(url, headers={"Range": requested})
+            assert response.status_code == 206
+            assert response.content == expected
+            assert response.headers["accept-ranges"] == "bytes"
+        assert client.get(url).content == payload
+        assert (root / "sample.mp4").read_bytes() == original
+        assert all(entry["readers"] == 0 for entry in main.preview_cache.values())
+    finally:
+        for entry in main.preview_cache.values():
+            entry["temporary"].cleanup()
+        main.preview_cache.clear()
+
+
+def test_compatible_preview_reports_conversion_failure(env, monkeypatch):
+    root, client, _ = env
+    (root / "broken.mp4").write_bytes(b"broken")
+
+    def fail(command, **kwargs):
+        raise subprocess.CalledProcessError(1, command, stderr=b"Invalid data found")
+
+    monkeypatch.setattr(main.subprocess, "run", fail)
+    response = client.post("/api/preview/prepare", params={"path": "broken.mp4"})
+    assert response.status_code == 422
+    assert "Invalid data found" in response.json()["detail"]
+    assert not main.preview_cache
+    assert main.preview_slots.acquire(blocking=False)
+    main.preview_slots.release()
+
+
 @pytest.mark.parametrize("url", ["/", "/index.html?reload=123"])
 def test_web_index_disables_caching(env, url):
     _, client, _ = env
