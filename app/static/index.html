@@ -75,6 +75,9 @@
     .timer{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}.smallbtn{background:var(--surface2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 11px;min-width:44px}
     .smallbtn:hover{border-color:var(--cyan)}.speed{color:var(--cyan);font-weight:780}
     .mode{background:#213348;color:#a3d8ee;padding:5px 10px;border-radius:7px;font-size:11px}
+    .playbackMode{border:1px solid var(--line);font:inherit;font-size:11px;flex:none;white-space:nowrap;cursor:pointer}
+    .playbackMode:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+    .playbackMode:disabled{opacity:.5;cursor:default}
     .palette{display:flex;flex-wrap:wrap;gap:5px}
     .swatch{border:1px solid var(--line);background:#131a27;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:3px;width:36px;height:34px;padding:0}
     .swatch:hover:not(:disabled){background:var(--surface2);border-color:var(--cyan)}
@@ -313,11 +316,10 @@
             <button type="button" id="homeBack" class="backToTree" aria-label="Retour à l’arborescence" title="Retour à l’arborescence">↑</button>
             <div class="classifyLocation" id="classifyFolder"></div>
             <button type="button" id="sortVideos" class="smallbtn classifySort" disabled>Tri : taille ↓</button>
-            <button type="button" id="compatiblePlayback" class="smallbtn" disabled title="Relancer avec une conversion compatible avec le navigateur">Lecture compatible</button>
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
-            <div class="mode" id="playMode">LECTURE LOCALE</div>
+            <button type="button" class="mode playbackMode" id="compatiblePlayback" disabled title="Activer ou relancer la lecture compatible"><span id="playMode">Lecture locale</span><span aria-hidden="true"> ↻</span></button>
           </div>
           <div class="videozone">
             <video id="player" playsinline controls preload="metadata"></video>
@@ -360,9 +362,8 @@
       <div id="exploreTagOptions"></div>
     </dialog>
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
-      <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
+      <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><button type="button" id="exploreCompatiblePlayback" class="mode playbackMode" title="Activer ou relancer la lecture compatible">Lecture compatible ↻</button><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
       <video id="explorePlayer" controls playsinline></video>
-      <button type="button" id="exploreCompatiblePlayback" class="smallbtn">Lecture compatible</button>
       <p id="explorePlayerStatus" class="muted" role="status" hidden></p>
     </dialog>
     <footer class="foot">2N Color · Tri local sans suppression ni conversion permanente · Le dossier est monté en lecture seule dans Colima.</footer>
@@ -811,13 +812,25 @@
     video.pause();video.removeAttribute("src");video.load();video.classList.remove("visible");$("placeholder").style.display="flex";
     activePath=null;duration=0;offset=0;$("clock").textContent="00:00 / 00:00";
   }
-  function videoUrl(path,start=0){return `/api/preview?path=${qs(path)}&start=${start.toFixed(1)}`}
+  let previewRequest=0;
+  function videoUrl(path,start=0){return `/api/preview?path=${qs(path)}&start=${start.toFixed(1)}&request=${++previewRequest}`}
+  function playMedia(player){
+    player.play().catch(error=>{
+      if(error.name==="AbortError")return;
+      if(error.name==="NotAllowedError"){
+        notice("Clique sur ▶ dans le lecteur pour démarrer la vidéo.",6500);
+      }else{
+        notice("Le lecteur ne parvient pas à ouvrir cette vidéo. Consulte les logs de l’application pour le détail.",6500);
+      }
+    });
+  }
   function startPreview(start=0){
     if(!activePath)return;
     mode="preview";offset=Math.max(0,start);fallbackAttempted=true;
-    $("playMode").textContent="LECTURE COMPATIBLE";
-    video.pause();video.src=videoUrl(activePath,offset);video.load();
-    video.play().catch(()=>{});
+    $("playMode").textContent="Préparation…";
+    video.pause();video.removeAttribute("src");video.load();
+    video.src=videoUrl(activePath,offset);video.load();
+    playMedia(video);
   }
   async function loadVideo(item){
     stopVideo();activePath=item.path;fallbackAttempted=false;mode=/\.(mp4|m4v|mov)$/i.test(item.name)?"direct":"preview";
@@ -831,7 +844,7 @@
     $("placeholder").style.display="none";video.classList.add("visible");
     $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"LECTURE COMPATIBLE";
     video.src=mode==="direct"?`/api/video?path=${qs(item.path)}`:videoUrl(item.path);
-    video.load();video.playbackRate=speed;video.play().catch(()=>{});
+    video.load();video.playbackRate=speed;playMedia(video);
     try{
       const info=await api("/api/probe?path="+qs(item.path));
       if(activePath!==item.path)return;
@@ -862,7 +875,10 @@
     }
   });
   video.addEventListener("loadedmetadata",()=>{if(!duration&&Number.isFinite(video.duration))duration=video.duration;updateClock()});
-  video.addEventListener("canplay",()=>{video.playbackRate=speed});
+  video.addEventListener("canplay",()=>{
+    video.playbackRate=speed;
+    $("playMode").textContent=mode==="preview"?"Lecture compatible":"Lecture directe";
+  });
   $("rewind30Btn").onclick=()=>seekTo(position()-30);
   $("rewindBtn").onclick=()=>seekTo(position()-10);
   $("forwardBtn").onclick=()=>seekTo(position()+10);
@@ -1413,8 +1429,12 @@
     }
   }
   function startExplorerVideo(source){
+    explorerVideo.pause();
+    explorerVideo.removeAttribute("src");
+    explorerVideo.load();
     explorerVideo.src = source;
-    explorerVideo.play().catch(()=>{});
+    explorerVideo.load();
+    playMedia(explorerVideo);
   }
   function openExplorerVideo(file){
     explorerFile = file;

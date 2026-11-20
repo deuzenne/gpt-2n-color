@@ -6,12 +6,14 @@ from collections.abc import Callable
 from functools import lru_cache
 import hmac
 import json
+import logging
 import os
 from pathlib import Path, PurePosixPath
 import secrets
 import subprocess
 import threading
 import time
+import tempfile
 from typing import Literal
 from unicodedata import combining, normalize
 
@@ -709,10 +711,11 @@ def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, 
     if target.suffix.casefold() not in VIDEO_EXTENSIONS:
         raise HTTPException(415, "Extension non vidéo")
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+               "-threads", "2", "-filter_threads", "1",
                "-ss", str(start), "-i", str(target),
                "-map", "0:V:0", "-map", "0:a:0?",
                "-vf", "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
-               "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+               "-c:v", "libx264", "-threads:v", "2", "-preset", "ultrafast", "-crf", "28",
                "-tune", "zerolatency", "-force_key_frames", "expr:gte(t,n_forced*1)",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-ac", "2",
                "-movflags", "frag_keyframe+empty_moov+default_base_moof",
@@ -720,19 +723,25 @@ def preview_video(path: str = Query(...), start: float = Query(default=0, ge=0, 
                "-f", "mp4", "pipe:1"]
 
     def chunks():
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, bufsize=0)
-        try:
-            while True:
-                block = proc.stdout.read(128 * 1024)
-                if not block:
-                    break
-                yield block
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait(timeout=5)
-            proc.stdout.close()
+        with tempfile.TemporaryFile() as errors:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                    stderr=errors, bufsize=0)
+            try:
+                while True:
+                    block = proc.stdout.read(128 * 1024)
+                    if not block:
+                        break
+                    yield block
+                if proc.wait() != 0:
+                    errors.seek(0)
+                    logging.getLogger(__name__).error(
+                        "Lecture compatible échouée pour %s : %s", path,
+                        errors.read(8192).decode("utf-8", errors="replace"))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+                proc.stdout.close()
 
     return StreamingResponse(chunks(), media_type="video/mp4",
                              headers={"Cache-Control": "no-store",
