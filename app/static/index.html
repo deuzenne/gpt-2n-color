@@ -78,6 +78,7 @@
     .playbackMode{border:1px solid var(--line);font:inherit;font-size:11px;flex:none;white-space:nowrap;cursor:pointer}
     .playbackMode:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
     .playbackMode:disabled{opacity:.5;cursor:default}
+    .playbackMode[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan);background:#183c43}
     .playbackStatus{flex:none;margin:6px 0;color:var(--cyan);font-size:12px;max-height:4em;overflow:auto;overflow-wrap:anywhere}
     .palette{display:flex;flex-wrap:wrap;gap:5px}
     .swatch{border:1px solid var(--line);background:#131a27;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:3px;width:36px;height:34px;padding:0}
@@ -320,7 +321,7 @@
           </div>
           <div class="sectiontop">
             <div style="min-width:0"><span class="overline">À regarder</span><h2 id="fileName">Prêt à classer tes vidéos ?</h2><div class="detail" id="fileDetails">Sélectionne un dossier puis lance l’analyse.</div></div>
-            <button type="button" class="mode playbackMode" id="compatiblePlayback" disabled title="Activer ou relancer la lecture compatible"><span id="playMode">Lecture locale</span><span aria-hidden="true"> ↻</span></button>
+            <button type="button" class="mode playbackMode" id="compatiblePlayback" disabled aria-pressed="false" title="Activer la lecture compatible, même si le son fonctionne"><span>Lecture compatible</span><span aria-hidden="true"> ↻</span></button>
           </div>
           <div class="videozone">
             <video id="player" playsinline controls preload="metadata"></video>
@@ -364,7 +365,7 @@
       <div id="exploreTagOptions"></div>
     </dialog>
     <dialog id="explorePlayerDialog" aria-labelledby="explorePlayerTitle">
-      <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><button type="button" id="exploreCompatiblePlayback" class="mode playbackMode" title="Activer ou relancer la lecture compatible">Lecture compatible ↻</button><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
+      <div class="explorePlayerHead"><strong id="explorePlayerTitle"></strong><button type="button" id="exploreCompatiblePlayback" class="mode playbackMode" aria-pressed="false" title="Activer ou relancer la lecture compatible">Lecture compatible ↻</button><form method="dialog"><button class="smallbtn">Fermer</button></form></div>
       <video id="explorePlayer" controls playsinline></video>
       <p id="explorePlayerStatus" class="playbackStatus" role="status" hidden></p>
     </dialog>
@@ -839,6 +840,7 @@
   }
   function stopVideo(){
     $("compatiblePlayback").disabled=true;
+    $("compatiblePlayback").setAttribute("aria-pressed","false");
     playbackRevisions.set(video, (playbackRevisions.get(video)||0)+1);
     $("playbackStatus").hidden=true;
     renderVideoMarkers();
@@ -883,7 +885,8 @@
   async function startPreview(start=0){
     if(!activePath)return;
     mode="preview";offset=Math.max(0,start);fallbackAttempted=true;previewMore=false;
-    $("playMode").textContent="Lecture compatible";
+    $("compatiblePlayback").setAttribute("aria-pressed","true");
+    $("compatiblePlayback").title="Lecture compatible active · cliquer pour relancer";
     const prepared=await prepareCompatible(video,activePath,offset);
     if(prepared){
       previewMore=prepared.more;
@@ -900,7 +903,10 @@
     const path = esc(item.path);
     $("fileDetails").innerHTML=`${size} · ${path}`;
     $("placeholder").style.display="none";video.classList.add("visible");
-    $("playMode").textContent=mode==="direct"?"LECTURE DIRECTE":"LECTURE COMPATIBLE";
+    $("compatiblePlayback").setAttribute("aria-pressed",String(mode==="preview"));
+    $("compatiblePlayback").title=mode==="direct"?
+      "Activer la lecture compatible, même si le son fonctionne":
+      "Lecture compatible active · cliquer pour relancer";
     if(mode==="preview"){
       startPreview(0);
     }else{
@@ -943,7 +949,6 @@
   video.addEventListener("canplay",()=>{
     playbackStatus(video);
     video.playbackRate=speed;
-    $("playMode").textContent=mode==="preview"?"Lecture compatible":"Lecture directe";
   });
   $("rewind30Btn").onclick=()=>seekTo(position()-30);
   $("rewindBtn").onclick=()=>seekTo(position()-10);
@@ -1505,6 +1510,7 @@
   }
   async function startExplorerCompatible(start=0){
     if(!explorerFile)return;
+    $("exploreCompatiblePlayback").setAttribute("aria-pressed","true");
     explorerFallback=true;explorerOffset=start;explorerMore=false;
     const prepared=await prepareCompatible(explorerVideo,explorerFile.path,start);
     if(prepared){
@@ -1515,6 +1521,7 @@
   function openExplorerVideo(file){
     explorerFile = file;
     explorerFallback = !/\.(mp4|m4v|mov)$/i.test(file.name);
+    $("exploreCompatiblePlayback").setAttribute("aria-pressed",String(explorerFallback));
     $("explorePlayerTitle").textContent = file.name;
     $("explorePlayerStatus").hidden = true;
     explorerDialog.showModal();
