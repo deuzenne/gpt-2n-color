@@ -386,7 +386,13 @@
   function notice(text, timeout=4000){const el=$("toast");el.textContent=text;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.display="none",timeout)}
   async function api(path, options={}) {
     const res=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
-    if(!res.ok){let msg=`Erreur HTTP ${res.status}`;try{const j=await res.json();msg=j.detail||msg}catch{}throw new Error(msg)}
+    if(!res.ok){
+      let msg=`Erreur HTTP ${res.status}`;
+      try{const j=await res.json();msg=j.detail||msg}catch{}
+      const error=new Error(msg);
+      error.status=res.status;
+      throw error;
+    }
     return res.json();
   }
   const qs=(x)=>encodeURIComponent(x);
@@ -710,11 +716,35 @@
     }catch(err){notice(err.message,6500)}
     finally{$("scanBtn").disabled=false}
   }
+  function sessionError(error, requested){
+    if(requested!==sessionId)return;
+    if(error.status===404){
+      sessionId=null;
+      state=null;
+      actionRevision++;
+      stopVideo();
+      buttons();
+      const message="Session expirée. Relance l’analyse du dossier pour reprendre le classement.";
+      $("scanStatus").textContent=message;
+      $("fileName").textContent="Analyse à relancer";
+      $("fileDetails").textContent=message;
+      $("placeholder").innerHTML='<div class="glyph">↻</div><strong>Analyse à relancer</strong><span>Relance l’analyse du dossier.</span>';
+      $("errorNotice").hidden=false;
+      $("errorNotice").textContent=message;
+      $("nextFolder").hidden=true;
+      $("scanBtn").disabled=false;
+      for(const id of ["statRemaining","statDone","statVolume","statTotal"])$(id).textContent="—";
+      setProgress(0);
+      notice(message,6500);
+    }else{
+      notice(error.message,6000);
+    }
+  }
   async function poll(snapshot=null){
     if(!sessionId || actionPending || (!snapshot && pollBusy))return;
     if(!snapshot)pollBusy=true;
+    const requested = sessionId;
     try{
-      const requested = sessionId;
       const revision = actionRevision;
       const s=snapshot ?? await api("/api/sessions/"+qs(requested));
       if(requested!==sessionId || revision!==actionRevision)return;
@@ -764,7 +794,7 @@
         $("fileDetails").textContent=s.total_files===0?"Choisis un dossier précis et vérifie son montage Colima.":s.reviewed?"Plus aucune vidéo à classer dans cette session.":s.colored_count+" vidéo(s) déjà colorée(s), ou pastilles illisibles : voir diagnostic.";
         $("placeholder").innerHTML='<div class="glyph">✓</div><strong>Session terminée</strong><span>Tu peux sélectionner un autre dossier.</span>';
       }
-    }catch(err){notice(err.message,6000)}
+    }catch(err){sessionError(err,requested)}
     finally{if(!snapshot)pollBusy=false}
   }
   async function sessionAction(action, payload){
@@ -775,7 +805,7 @@
     let snapshot;
     try{
       snapshot=await api("/api/sessions/"+qs(requested)+"/"+action,{method:"POST",body:JSON.stringify(payload)});
-    }catch(err){notice(err.message)}
+    }catch(err){sessionError(err,requested)}
     finally{actionPending=false}
     if(requested!==sessionId)return;
     buttons();
